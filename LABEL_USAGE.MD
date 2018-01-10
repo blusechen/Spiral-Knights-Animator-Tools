@@ -9,7 +9,6 @@ You **may** apply the following labels to your post:
 
 You **may not** apply the following labels to your post:
 
-- Invalid
-- Duplicate
-- Old-version
-- In-progress
+- **Duplicate**, which is used if this bug has been reported already.
+- **Error-on-old-version**, which is used if the bug in question only occurs on an outdated version of the program.
+- **In-progress**, which is used when the bug in question is being inspected.
