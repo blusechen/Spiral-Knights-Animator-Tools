@@ -1,14 +1,16 @@
 # The big 'ol to-do list.
 
-#### Key:
+## Key:
 Plain text = Not done
 
 *Italics* = Working on it
 
 ~~Strikethrough~~ = Done
 
+## The list:
 
-**General:**
+### General
+
 * ~~Add better handlers for unknown data types.~~
 
 **Implementations (Model types):**
@@ -24,7 +26,12 @@ Plain text = Not done
 * ~~Support for other configs~~
 * **~~Support for ProjectXModelConfig (Or, better known as "Knights")~~** (NOTE: This update will not be appended. Through further research I found that ProjectXModelConfig knight models are intended to be controlled by players. This config allows for the things like seperate leg animations based on where you're facing vs where you're moving. There is another knight model, luckily.)
 
-**Export:**
+### Internal
+
+* Rewrite the code for some stuff. It's still a mess and could use a ton of fixes.
+
+### Exporting
+
 * Finish upgraded DAE exporter.
    * ~~Finish base model exporting~~
    * *Finish bone data output*
