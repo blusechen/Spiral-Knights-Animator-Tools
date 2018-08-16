@@ -7,9 +7,8 @@ import javax.swing.ImageIcon;
  * @author Xan the Dragon
  */
 public class TreeNode {
-	protected static Icon iconData = new Icon();
 	public String displayText = "NULL";
-	public ImageIcon displayIcon = iconData.none;
+	public ImageIcon displayIcon = Icon.none;
 	
 	/**
 	 * Create a blank node. Manually set the display values later.

@@ -3,62 +3,97 @@ package xandragon.core.ui;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
-import java.net.URISyntaxException;
 
 import javax.swing.*;
 import javax.swing.tree.*;
 
-import xandragon.converter.BinaryParser;
 import xandragon.core.ui.tree.CustomTreeCellRenderer;
 import xandragon.core.ui.tree.DataTreePath;
 import xandragon.core.ui.tree.TreeRenderer;
+import xandragon.util.IOHelper;
 import xandragon.util.Logger;
-import xandragon.util.filedata.DataPersistence;
-import xandragon.util.filedata.FileValidator;
 import xandragon.util.filedata.OpenFileFilter;
 
 @SuppressWarnings("serial")
 public class MainGui extends Frame implements ActionListener, WindowListener {
 	
+	
+	// THIS CODE IS COMPLETE AIDS.
+	// Maybe I should fix it...
+	// I did. It's less horrid.
+	public static MainGui INSTANCE;
+	
 	// Objects for the UI.
-	public TextArea UI_Label;
+	protected TextArea UI_Label = null; //This is public because the logger needs access to it.
 	protected Button openButton;
 	protected Button saveButton;
-	protected Button setRsrcButton;
 	protected JFileChooser chooser;
-	protected BinaryParser binaryParser;
 	protected JTree dataTree;
 	
-	//File filters
-	protected OpenFileFilter DAT = new OpenFileFilter("DAT", "Binary Spiral Knights asset file");
-	protected OpenFileFilter DAE = new OpenFileFilter("DAE", "Collada DAE");
-	protected OpenFileFilter XML = new OpenFileFilter("XML", "Spiral Spy XML");
-	protected OpenFileFilter DIR = new OpenFileFilter(true);
-	
-	//Files.
-	protected File INPUT_FILE;
-	protected File OUTPUT_FILE;
-	
 	//Other
-	protected Logger log;
-	protected DataPersistence dataPersistence = null;
 	protected SelectType fileMode = SelectType.NONE;
 	
 	// Main constructor.
-	public MainGui (BinaryParser _parser) throws URISyntaxException {
+	public MainGui() {
+		if (IOHelper.getResourceDirectory() == null) {
+			showGUIError();
+		} else {
+			createMainGUI();
+		}
+		INSTANCE = this;
+	}
+	
+	protected JFileChooser createConfirmingChooser() {
+		return new JFileChooser() {
+			@Override
+			public void approveSelection() {
+				File file = getSelectedFile();
+				if (fileMode == SelectType.SAVE) {
+					String ext = IOHelper.getFileExtension(file);
+					//if (JOptionPane.showconfirmDialog(parent, body, title, JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+					String intendedExt = ((OpenFileFilter)getFileFilter()).fileExt.toLowerCase();
+					if (!ext.toLowerCase().matches(intendedExt)) {
+						int renFile = JOptionPane.showConfirmDialog(this, "This file does not have the *." + intendedExt + " extension.\nDo you want to save with the correct extension?", "Extension incorrect", JOptionPane.YES_NO_CANCEL_OPTION);
+						if (renFile == JOptionPane.YES_OPTION) {
+							file = IOHelper.setFileExtension(file, intendedExt); //Yes, keep this.
+							setSelectedFile(file);
+						} else if (renFile == JOptionPane.CANCEL_OPTION) {
+						//} else if (renFile == JOptionPane.NO_OPTION) {
+							return;
+						}
+					}
+					if (file.exists()) {
+						int result = JOptionPane.showConfirmDialog(this, "A file in this directory is already using the name \"" + file.getName() + "\"\nAre you sure you want to overwrite this file?", "Warning: File Overwrite", JOptionPane.YES_NO_CANCEL_OPTION);
+						if (result == JOptionPane.YES_OPTION) {
+							super.approveSelection();
+						} else if (result == JOptionPane.CANCEL_OPTION) {
+							cancelSelection();
+						}
+					} else {
+						super.approveSelection();
+					}
+				} else {
+					super.approveSelection();
+				}
+			}
+		};
+	}
+	
+	protected void createMainGUI() {
 		setLayout(null);
 		setResizable(false);
 		setTitle("Spiral Knights Animator Tools");
 		setSize(800, 500);
 		
-		dataPersistence = new DataPersistence();
-		chooser = new JFileChooser(dataPersistence.getSavedResourceDirectory());
+		//chooser = new JFileChooser();
+		chooser = createConfirmingChooser();
 		chooser.setAcceptAllFileFilterUsed(false);
-		UI_Label = new TextArea("Welcome to Spiral Knights Animator Tools.\nPlease select a model.\n", 0, 0, TextArea.SCROLLBARS_NONE);
+		
+		UI_Label = new TextArea("Welcome to Spiral Knights Animator Tools.\nPlease select a model file from the game directory.\n", 0, 0, TextArea.SCROLLBARS_NONE);
+		Logger.setLabel(UI_Label);
 		dataTree = TreeRenderer.createBlankTree();
-		openButton = new Button("Open a model...");
+		openButton = new Button("Select a model...");
 		saveButton = new Button("Save model as...");
-		setRsrcButton = new Button("Set resource directory...");
 		
 		chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
 		dataTree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
@@ -68,13 +103,11 @@ public class MainGui extends Frame implements ActionListener, WindowListener {
 		
 		saveButton.setEnabled(false);
 		
-		
 		UI_Label.setBounds(5, 70, 415, 420);
 		add(UI_Label);
 		
 		JScrollPane scroll = new JScrollPane(dataTree, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
 		scroll.setBounds(420, 65, 380, 420);
-		//dataTree.setBounds(420, 65, 380, 420);
 		dataTree.setBounds(0, 0, 1000, 1000);
 		add(scroll);
 		
@@ -84,28 +117,21 @@ public class MainGui extends Frame implements ActionListener, WindowListener {
 		saveButton.setBounds(230, 35, 180, 30);
 		add(saveButton);
 		
-		setRsrcButton.setBounds(435, 35, 180, 30);
-		add(setRsrcButton);
-		
 		addWindowListener(this);
 		openButton.addActionListener(this);
 		saveButton.addActionListener(this);
-		setRsrcButton.addActionListener(this);
 		chooser.addActionListener(this);
 		
 		setVisible(true);
-		
-		binaryParser = new BinaryParser(log);
+		Logger.setReady(true);
+		chooser.setCurrentDirectory(IOHelper.getResourceDirectory());
 	}
 	
-	// Methods
-	/**Give the GUI a logger to append to. While this may seem redundant (Given the label is here already), it's also for the purpose of printing to system output.*/
-	public void setLog(Logger _log) {
-		log = _log;
-		binaryParser.setLog(log);
+	protected void showGUIError() {
+		JOptionPane.showMessageDialog(null, "Please put this JAR file in the Spiral Knights install folder", "Directory incorrect", JOptionPane.WARNING_MESSAGE);
 	}
 	
-	protected void resetTree() {
+	public void resetTree() {
 		try {
 			dataTree.setModel(TreeRenderer.createBlankTreePath());
 			dataTree.setCellRenderer(new DefaultTreeCellRenderer());
@@ -114,7 +140,8 @@ public class MainGui extends Frame implements ActionListener, WindowListener {
 		}
 	}
 	
-	protected void updateTree(DataTreePath dataTreePath) {
+	//This is public so the BinaryParser can access it
+	public void updateTree(DataTreePath dataTreePath) {
 		try {
 			dataTree.setModel(dataTreePath);
 			dataTree.setCellRenderer(new CustomTreeCellRenderer());
@@ -124,92 +151,41 @@ public class MainGui extends Frame implements ActionListener, WindowListener {
 		}
 	}
 	
+	public void updateSaveButtonState(boolean state) {
+		saveButton.setEnabled(state);
+	}
+	
 	@Override
 	public void actionPerformed(ActionEvent evt) {
 		if (evt.getSource() == openButton) {
 			//Open requested.
 			chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
 			fileMode = SelectType.OPEN;
-			chooser.addChoosableFileFilter(DAT);
-			chooser.removeChoosableFileFilter(DAE);
-			chooser.removeChoosableFileFilter(DIR);
-			chooser.removeChoosableFileFilter(XML);
+			chooser.addChoosableFileFilter(IOHelper.DAT);
+			chooser.removeChoosableFileFilter(IOHelper.DAE);
+			//chooser.removeChoosableFileFilter(IOHelper.DIR);
+			chooser.addChoosableFileFilter(IOHelper.XML);
 			
-			chooser.showDialog(this, "Open model");
+			chooser.showDialog(this, "Select model");
 		} else if (evt.getSource() == saveButton) {
 			//Save selected.
 			chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
 			fileMode = SelectType.SAVE;
-			chooser.removeChoosableFileFilter(DAT);
-			chooser.removeChoosableFileFilter(DIR);
-			chooser.addChoosableFileFilter(DAE);
-			//chooser.addChoosableFileFilter(XML);
+			chooser.removeChoosableFileFilter(IOHelper.DAT);
+			//chooser.removeChoosableFileFilter(IOHelper.DIR);
+			chooser.addChoosableFileFilter(IOHelper.DAE);
+			chooser.removeChoosableFileFilter(IOHelper.XML);
 			
 			chooser.showDialog(this, "Save model");
-		} else if (evt.getSource() == setRsrcButton) {
-			//Setting resource directory
-			chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-			fileMode = SelectType.SET;
-			chooser.removeChoosableFileFilter(DAT);
-			chooser.removeChoosableFileFilter(DAE);
-			chooser.removeChoosableFileFilter(XML);
-			chooser.addChoosableFileFilter(DIR);
-			
-			chooser.showOpenDialog(this);
 		} else if (evt.getSource() == chooser) {
 			if (evt.getActionCommand() == JFileChooser.APPROVE_SELECTION) {
 				if (fileMode == SelectType.SAVE) {
-					OUTPUT_FILE = chooser.getSelectedFile();
-					try {
-						log.ClearLog();
-						OpenFileFilter current = (OpenFileFilter) chooser.getFileFilter();
-						if (current == DAE) {
-							if (!FileValidator.getFileExtension(OUTPUT_FILE).toLowerCase().matches("dae")) {
-								OUTPUT_FILE = new File(OUTPUT_FILE.getPath() + ".dae");
-							}
-							binaryParser.saveDAE(OUTPUT_FILE);
-							
-							log.AppendLn("Conversion complete.");
-						} else if (current == XML) {
-							log.AppendLn("[WARNING] XML Exporting is not ready yet. Please save as another format.");
-						}
-					} catch (Exception e) {
-						//NOTE: If we hit this point in the GUI, any errors that would occur during read would already be handled by preProcess.
-						e.printStackTrace();
-					}
+					IOHelper.handleSaveOperation(chooser.getSelectedFile(), (OpenFileFilter) chooser.getFileFilter());
 				} else if (fileMode == SelectType.OPEN) {
-					INPUT_FILE = chooser.getSelectedFile();
-					if (INPUT_FILE.exists()) {
-						log.ClearLog();
-						
-						try {
-							File t = INPUT_FILE;
-							while (t.getName().matches("rsrc") == false) {
-								t = t.getParentFile();
-							}
-							binaryParser.setResourceDir(t.getPath() + File.separator);
-							binaryParser.process(INPUT_FILE);
-							updateTree(binaryParser.treeRen.getDataTreePath());
-						} catch (Exception e) {
-							e.printStackTrace();
-						}
-						
-						saveButton.setEnabled(true);
-					} else {
-						saveButton.setEnabled(false);
-					}
-				} else if (fileMode == SelectType.SET) {
-					dataPersistence.setSavedResourceDirectory(chooser.getSelectedFile());
+					IOHelper.handleOpenOperation(chooser.getSelectedFile(), (OpenFileFilter) chooser.getFileFilter());
 				}
-			} else if (evt.getActionCommand() == JFileChooser.CANCEL_SELECTION) {
-				//Do I do anything here?
 			}
 		}
-	}
-	
-	protected static enum DataType {
-		STRIDE,
-		OFFSET
 	}
 	
 	protected static enum SelectType {

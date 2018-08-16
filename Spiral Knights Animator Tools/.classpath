@@ -1,7 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
-	<classpathentry excluding="assets/" kind="src" path="src"/>
-	<classpathentry kind="src" path="assets"/>
+	<classpathentry kind="src" path="src"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="lib" path="src/libs/aopalliance-1.0.jar"/>
+	<classpathentry kind="lib" path="src/libs/guava-18.0.jar"/>
+	<classpathentry kind="lib" path="src/libs/guice-3.0.jar"/>
+	<classpathentry kind="lib" path="src/libs/javax.inject-1.jar"/>
+	<classpathentry kind="lib" path="src/libs/jsr250-api-1.0.jar"/>
+	<classpathentry kind="lib" path="src/libs/lwjgl_util.jar"/>
+	<classpathentry kind="lib" path="src/libs/lwjgl.jar"/>
+	<classpathentry kind="lib" path="src/libs/ooo_suite.jar"/>
+	<classpathentry kind="lib" path="src/libs/ooo-util-1.4.1.jar"/>
+	<classpathentry kind="lib" path="src/libs/samskivert-1.9.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

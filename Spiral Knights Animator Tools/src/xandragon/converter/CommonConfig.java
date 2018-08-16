@@ -4,17 +4,21 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 
+import javax.swing.ImageIcon;
 import javax.swing.tree.DefaultMutableTreeNode;
 
 import com.threerings.export.BinaryImporter;
 import com.threerings.opengl.model.config.*;
-import com.threerings.opengl.model.config.ArticulatedConfig.Attachment;
 import com.threerings.opengl.model.config.ArticulatedConfig.Node;
+import com.threerings.opengl.model.config.ArticulatedConfig.NodeTransform;
 import com.threerings.opengl.scene.config.*;
 import com.threerings.opengl.model.config.ModelConfig.MeshSet;
 import com.threerings.opengl.model.config.ModelConfig.VisibleMesh;
 
+import xandragon.core.ui.MainGui;
 import xandragon.core.ui.tree.*;
+import xandragon.util.AppendableArray;
+import xandragon.util.IOHelper;
 import xandragon.util.Logger;
 
 /**
@@ -23,19 +27,12 @@ import xandragon.util.Logger;
  * @author Xan the Dragon
  */
 public class CommonConfig {
-	protected static Icon iconData = new Icon();
-	
-	/** The logger. */
-	protected static Logger log;
 	
 	/** The main configuration of the model being imported.*/
 	protected ModelConfig mainConfig;
 	
 	/** The raw class of the configuration, which can be used to find its type.*/
 	protected Object baseModelClass;
-	
-	/** The rsrc directory. */
-	protected static String resourceDir = "";
 	
 	/** The tree renderer. */
 	public static TreeRenderer treeRenderer = null;
@@ -46,43 +43,96 @@ public class CommonConfig {
 	/** The name of the subclass (if applicable) being used*/
 	public String subClassName;
 	
+	/** The name of the model file, which is the file path with a dot instead of a slash.*/
+	public String name;
+	
 	/** Visible meshes*/
-	public VisibleMesh[] visibleMeshes;
+	//public VisibleMesh[] visibleMeshes;
+	public AppendableArray<VisibleMesh> visibleMeshes;
 	
 	/** Attachments */
-	public VisibleMesh[] attachments;
+	//public VisibleMesh[] attachments;
+	public AppendableArray<VisibleMesh> attachments;
 	
-	/** Bones*/
+	/** Bones */
 	public Node boneData;
 	
+	/** Bone transformations */
+	//public NodeTransform[] nodeTransforms;
+	public AppendableArray<NodeTransform> nodeTransforms;
+	
+	/**
+	 * Create a new CommonConfig from the necessary information.
+	 * @param raw The Object representation of the Spiral Knights model.
+	 * @param fileName The name of the file opened.
+	 * @param ren The tree renderer.
+	 * @throws IOException
+	 */
 	public CommonConfig(Object raw, String fileName, TreeRenderer ren) throws IOException {
 		treeRenderer = ren;
+		visibleMeshes = new AppendableArray<VisibleMesh>();
+		attachments = new AppendableArray<VisibleMesh>();
+		nodeTransforms = new AppendableArray<NodeTransform>();
+		name = fileName.replace("/", ".");
 		handleModelMain(raw, fileName);
+	}
+	
+	
+	protected void exitTreeState(String text, ImageIcon icon) {
+		TreeNode typeTreeNode = new TreeNode(text);
+		typeTreeNode.displayIcon = icon;
+		treeRenderer.addNodeRoot(typeTreeNode);
+		MainGui.INSTANCE.updateTree(treeRenderer.getDataTreePath());
 	}
 	
 	protected void handleModelMain(Object raw, String fileName, DefaultMutableTreeNode lastTreeNode, boolean isAttachment) throws IOException {
 		if (raw instanceof ModelConfig) {
 			mainConfig = (ModelConfig) raw;
 		} else if (raw instanceof AnimationConfig) {
-			log.AppendLn("An error occurred! An AnimationConfig (the file imported was an animation) was imported (If you didn't do this, a Compound / Merged model may have called for it). Import a model instead.");
+			Logger.AppendLn("An error occurred! An AnimationConfig (an animation) was imported (If you didn't do this, ignore this). Import a model instead.");
+			exitTreeState("Type: AnimationConfig", Icon.animation);
+			
 			return;
 		} else {
-			log.AppendLn("An error occurred! The input model's class is unknown. All that is known is that it's NOT a model (If you didn't do this, a Compound / Merged model may have called for it). Import a model instead.");
+			Logger.AppendLn("An error occurred! The input file's classtype is unknown. Try opening another file.\n(Input Type = " + raw.getClass().getSimpleName() + ")");
+			exitTreeState("Type: ???", Icon.unknown);
+			
 			return;
 		}
 		
-		baseModelClass = mainConfig.implementation.copy(null);
-		String name = baseModelClass.getClass().getName();
+		//Ok there's a bad bug when opening player-knight models involving the class for the type not even existing.
+		//Because of this I created ProjectXModelConfigReplicator which uses some hacky reflection tricks to test the type.
+		//Said reflection relies on being in the SK directory, just like Spiral Spy yet again!
+		String name = null;
+		if (mainConfig.implementation == null) {
+			if (ProjectXModelConfigReplicator.isModelProjectX(raw)) {
+				//Special case: Knight model!
+				modelClassName = "ProjectXModelConfig";
+				subClassName = null;
+			} else {
+				Logger.AppendLn("WARNING: Implementation null!");
+				Logger.AppendLn("This model is a valid ThreeRings file, but is using customized logic likely designed specifically for whatever game it's from. As a result, this model cannot be loaded.");
+				exitTreeState("null", Icon.error);
+				
+				return;
+			}
+			
+		} else { 
+			baseModelClass = mainConfig.implementation.copy(null);
+			name = baseModelClass.getClass().getName();
+		}
 		
 		//To what I know, models will either end in "." (blah.blah.blah.ModelName) so I can substring everything to that last . to take out ModelName
 		//Though if it's a subclass i.e. Derived it will end in $.
-		boolean isSubclass = name.contains((CharSequence) "$");
-		if (!isSubclass) {
-			modelClassName = name.substring(name.lastIndexOf('.') + 1);
-			subClassName = null;
-		} else {
-			modelClassName = name.substring(name.lastIndexOf('.') + 1, name.lastIndexOf("$"));
-			subClassName = name.substring(name.lastIndexOf("$") + 1);
+		if (name != null) {
+			boolean isSubclass = name.contains((CharSequence) "$");
+			if (!isSubclass) {
+				modelClassName = name.substring(name.lastIndexOf('.') + 1);
+				subClassName = null;
+			} else {
+				modelClassName = name.substring(name.lastIndexOf('.') + 1, name.lastIndexOf("$"));
+				subClassName = name.substring(name.lastIndexOf("$") + 1);
+			}
 		}
 		
 		TreeNode typeTreeNode = new TreeNode("Type: "+modelClassName);
@@ -91,14 +141,16 @@ public class CommonConfig {
 			typeTreeNode.displayText = "Type: "+modelClassName+"$"+subClassName;
 			
 			if (subClassName.matches("Imported")) {
-				typeTreeNode.displayIcon = iconData.unknown;
-				//ModelConfig.Imported cfg = (ModelConfig.Imported) mainConfig.implementation;
+				Logger.AppendLn("The specific classtype in its raw form is:",typeTreeNode.displayText);
+				typeTreeNode.displayIcon = Icon.unknown;
+				typeTreeNode.displayText = "Unknown Type";
+				
 				
 			} else if (subClassName.matches("Derived")) {
-				typeTreeNode.displayIcon = iconData.derived;
+				typeTreeNode.displayIcon = Icon.derived;
 				ModelConfig.Derived cfg = (ModelConfig.Derived) mainConfig.implementation;
 				
-				TreeNode refTreeNode = new TreeNode("Model references...", iconData.object);
+				TreeNode refTreeNode = new TreeNode("This model derives:", Icon.object);
 				
 				DefaultMutableTreeNode refTreeNodeTree;
 				DefaultMutableTreeNode newModelTreeNodeTree;
@@ -110,7 +162,7 @@ public class CommonConfig {
 				} else {
 					//Parent to the reference folder, aka lastTreeNode
 					//Here, we need to create the modelTreeNode
-					TreeNode modelTreeNode = new TreeNode(fileName, iconData.model);
+					TreeNode modelTreeNode = new TreeNode(fileName, Icon.model);
 					newModelTreeNodeTree = treeRenderer.addNode(lastTreeNode, modelTreeNode);
 					//Mode TreeNode made. Now the type + ref go into the new model TreeNode.
 					treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
@@ -119,10 +171,10 @@ public class CommonConfig {
 				
 				openReferenceFromPath(cfg.model.getName(), refTreeNodeTree, isAttachment);
 			} else if (subClassName.matches("Schemed")) {
-				typeTreeNode.displayIcon = iconData.part;
+				typeTreeNode.displayIcon = Icon.script_part;
 				ModelConfig.Schemed cfg = (ModelConfig.Schemed) mainConfig.implementation;
 				
-				TreeNode refTreeNode = new TreeNode("Model references...", iconData.object);
+				TreeNode refTreeNode = new TreeNode("Referenced assets:", Icon.object);
 				
 				DefaultMutableTreeNode refTreeNodeTree;
 				DefaultMutableTreeNode newModelTreeNodeTree;
@@ -134,7 +186,7 @@ public class CommonConfig {
 				} else {
 					//Parent to the reference folder, aka lastTreeNode
 					//Here, we need to create the modelTreeNode
-					TreeNode modelTreeNode = new TreeNode(fileName, iconData.model);
+					TreeNode modelTreeNode = new TreeNode(fileName, Icon.reference);
 					newModelTreeNodeTree = treeRenderer.addNode(lastTreeNode, modelTreeNode);
 					//Mode TreeNode made. Now the type + ref go into the new model TreeNode.
 					treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
@@ -146,43 +198,47 @@ public class CommonConfig {
 			
 		} else if (modelClassName.matches("ArticulatedConfig")) {
 			ArticulatedConfig cfg = (ArticulatedConfig) mainConfig.implementation;
-			typeTreeNode.displayIcon = iconData.person;
-			TreeNode refTreeNode = new TreeNode("Attachments", iconData.object);
+			typeTreeNode.displayIcon = Icon.person;
+			TreeNode refTreeNode = new TreeNode("Attachments", Icon.plug);
 			
-			DefaultMutableTreeNode refTreeNodeTree;
+			//DefaultMutableTreeNode refTreeNodeTree = null;
 			DefaultMutableTreeNode newModelTreeNodeTree;
 			
 			if (lastTreeNode == null) {
 				//Parent to root.
 				treeRenderer.addNodeRoot(typeTreeNode);
-				refTreeNodeTree = treeRenderer.addNodeRoot(refTreeNode);
+				treeRenderer.addNodeRoot(refTreeNode); //used refTreeNodeTree
 			} else {
 				//Parent to the reference folder, aka lastTreeNode
 				//Here, we need to create the modelTreeNode
-				TreeNode modelTreeNode = new TreeNode(fileName, iconData.model);
+				TreeNode modelTreeNode = new TreeNode(fileName, Icon.attachment); //////////////////////////////// was model
 				newModelTreeNodeTree = treeRenderer.addNode(lastTreeNode, modelTreeNode);
 				//Mode TreeNode made. Now the type + ref go into the new model TreeNode.
 				treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
-				refTreeNodeTree = treeRenderer.addNode(newModelTreeNodeTree, refTreeNode);
+				treeRenderer.addNode(newModelTreeNodeTree, refTreeNode); //used refTreeNodeTree
 			}
 			
 			if (!isAttachment) {
-				visibleMeshes = cfg.skin.visible;
+				//visibleMeshes = cfg.skin.visible;
+				visibleMeshes.add(cfg.skin.visible);
 			} else {
-				attachments = cfg.skin.visible;
+				//attachments = cfg.skin.visible;
+				attachments.add(cfg.skin.visible);
 			}
 			boneData = cfg.root;
-			for (Attachment a : cfg.attachments) {
+			//nodeTransforms = cfg.nodeTransforms;
+			nodeTransforms.add(cfg.nodeTransforms);
+			/*for (Attachment a : cfg.attachments) {
 				if (a.model != null) {
 					openReferenceFromPath(a.model.getName(), refTreeNodeTree, true);
 				}
-			}
+			}*/
 			
 		} else if (modelClassName.matches("CompoundConfig")) {
 			CompoundConfig cfg = (CompoundConfig) mainConfig.implementation;
 			
-			typeTreeNode.displayIcon = iconData.partgroup;
-			TreeNode refTreeNode = new TreeNode("Model references...", iconData.object);
+			typeTreeNode.displayIcon = Icon.model2;
+			TreeNode refTreeNode = new TreeNode("Referenced assets:", Icon.object);
 			
 			DefaultMutableTreeNode refTreeNodeTree;
 			DefaultMutableTreeNode newModelTreeNodeTree;
@@ -194,7 +250,7 @@ public class CommonConfig {
 			} else {
 				//Parent to the reference folder, aka lastTreeNode
 				//Here, we need to create the modelTreeNode
-				TreeNode modelTreeNode = new TreeNode(fileName, iconData.model);
+				TreeNode modelTreeNode = new TreeNode(fileName, Icon.reference);
 				newModelTreeNodeTree = treeRenderer.addNode(lastTreeNode, modelTreeNode);
 				//Mode TreeNode made. Now the type + ref go into the new model TreeNode.
 				treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
@@ -205,21 +261,23 @@ public class CommonConfig {
 			
 		} else if (modelClassName.matches("GeneratedStaticConfig")) {
 			//GeneratedStaticConfig cfg = (GeneratedStaticConfig) mainConfig.implementation;
-			typeTreeNode.displayIcon = iconData.unknown;
+			typeTreeNode.displayIcon = Icon.part_clear;
 			if (lastTreeNode == null) {
 				treeRenderer.addNodeRoot(typeTreeNode);
 			} else {
-				TreeNode modelTreeNode = new TreeNode(fileName, iconData.model);
+				TreeNode modelTreeNode = new TreeNode(fileName, Icon.reference);
 				DefaultMutableTreeNode newModelTreeNodeTree = treeRenderer.addNode(lastTreeNode, modelTreeNode);
 				//Mode TreeNode made. Now the type + ref go into the new model TreeNode.
 				treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
 			}
-			//There's no way to read this.
+			//There's no way to read this. Rip.
+			MainGui.INSTANCE.updateTree(treeRenderer.getDataTreePath());
+			
 		} else if (modelClassName.matches("MergedStaticConfig")) {
 			MergedStaticConfig cfg = (MergedStaticConfig) mainConfig.implementation;
 
-			typeTreeNode.displayIcon = iconData.partgroup;
-			TreeNode refTreeNode = new TreeNode("Model references...", iconData.object);
+			typeTreeNode.displayIcon = Icon.partgroup;
+			TreeNode refTreeNode = new TreeNode("Referenced assets:", Icon.object);
 			
 			DefaultMutableTreeNode refTreeNodeTree;
 			DefaultMutableTreeNode newModelTreeNodeTree;
@@ -231,7 +289,7 @@ public class CommonConfig {
 			} else {
 				//Parent to the reference folder, aka lastTreeNode
 				//Here, we need to create the modelTreeNode
-				TreeNode modelTreeNode = new TreeNode(fileName, iconData.model);
+				TreeNode modelTreeNode = new TreeNode(fileName, Icon.reference);
 				newModelTreeNodeTree = treeRenderer.addNode(lastTreeNode, modelTreeNode);
 				//Mode TreeNode made. Now the type + ref go into the new model TreeNode.
 				treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
@@ -241,81 +299,45 @@ public class CommonConfig {
 			
 		} else if (modelClassName.matches("StaticConfig")) {
 			StaticConfig cfg = (StaticConfig) mainConfig.implementation;
-			typeTreeNode.displayIcon = iconData.part;
+			typeTreeNode.displayIcon = Icon.part;
 			if (lastTreeNode == null) {
 				treeRenderer.addNodeRoot(typeTreeNode);
 			} else {
-				TreeNode modelTreeNode = new TreeNode(fileName, iconData.model);
+				TreeNode modelTreeNode = new TreeNode(fileName, Icon.reference);
 				DefaultMutableTreeNode newModelTreeNodeTree = treeRenderer.addNode(lastTreeNode, modelTreeNode);
 				//Mode TreeNode made. Now the type + ref go into the new model TreeNode.
 				treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
 			}
-			visibleMeshes = cfg.meshes.visible;
-			boneData = null;
-			attachments = null;
+			visibleMeshes.add(cfg.meshes.visible);
+			//boneData = null;
+			//attachments = null;
+			//nodeTransforms = null;
 			
 		} else if (modelClassName.matches("StaticSetConfig")) {
 			StaticSetConfig cfg = (StaticSetConfig) mainConfig.implementation;
-			typeTreeNode.displayIcon = iconData.partgroup;
+			typeTreeNode.displayIcon = Icon.partgroup;
 			if (lastTreeNode == null) {
 				treeRenderer.addNodeRoot(typeTreeNode);
 			} else {
-				TreeNode modelTreeNode = new TreeNode(fileName, iconData.model);
+				TreeNode modelTreeNode = new TreeNode(fileName, Icon.reference);
 				DefaultMutableTreeNode newModelTreeNodeTree = treeRenderer.addNode(lastTreeNode, modelTreeNode);
 				//Mode TreeNode made. Now the type + ref go into the new model TreeNode.
 				treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
 			}
 			
 			MeshSet set = cfg.meshes.get(cfg.model);
-			visibleMeshes = set.visible;
+			visibleMeshes.add(set.visible);
 			
 		} else if (modelClassName.matches("ProjectXModelConfig")) {
-			/*
-			ProjectXModelConfig cfg = (ProjectXModelConfig) mainConfig.implementation;
-			
-			typeTreeNode.displayIcon = iconData.person;
-			TreeNode refTreeNode = new TreeNode("Attachments", iconData.object);
-			
-			DefaultMutableTreeNode refTreeNodeTree;
-			DefaultMutableTreeNode newModelTreeNodeTree;
-			
+			typeTreeNode.displayIcon = Icon.error;
+			typeTreeNode.displayText = "Type: ProjectXModelConfig";
 			if (lastTreeNode == null) {
-				//Parent to root.
 				treeRenderer.addNodeRoot(typeTreeNode);
-				refTreeNodeTree = treeRenderer.addNodeRoot(refTreeNode);
 			} else {
-				//Parent to the reference folder, aka lastTreeNode
-				//Here, we need to create the modelTreeNode
-				TreeNode modelTreeNode = new TreeNode(fileName, iconData.model);
-				newModelTreeNodeTree = treeRenderer.addNode(lastTreeNode, modelTreeNode);
-				//Mode TreeNode made. Now the type + ref go into the new model TreeNode.
-				treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
-				refTreeNodeTree = treeRenderer.addNode(newModelTreeNodeTree, refTreeNode);
+				treeRenderer.addNode(lastTreeNode, typeTreeNode);
 			}
+			Logger.AppendLn("ERROR! You attempted to open a player knight model. These can't be read. You should use '/rsrc/character/npc/crew/model.dat' instead!");
 			
-			if (!isAttachment) {
-				visibleMeshes = cfg.skin.visible;
-			} else {
-				attachments = cfg.skin.visible;
-			}
-			boneData = cfg.root;
-			for (Attachment a : cfg.attachments) {
-				if (a.model != null) {
-					openReferenceFromPath(a.model.getName(), refTreeNodeTree, true);
-				}
-			}
-			*/
-			DefaultMutableTreeNode typeTreeNodeTree;
-			typeTreeNode.displayIcon = iconData.unknown;
-			if (lastTreeNode == null) {
-				typeTreeNodeTree = treeRenderer.addNodeRoot(typeTreeNode);
-			} else {
-				typeTreeNodeTree = treeRenderer.addNode(lastTreeNode, typeTreeNode);
-			}
-			TreeNode info = new TreeNode("ProjectXModelConfigs (Knights) cannot be read.", iconData.info);
-			TreeNode info2 = new TreeNode("This feature will be implemented soon.", iconData.info);
-			treeRenderer.addNode(typeTreeNodeTree, info);
-			treeRenderer.addNode(typeTreeNodeTree, info2);
 			
 		} else if (modelClassName.matches("ViewerAffecterConfig")) {
 			//Phew. This is gonna be crazy.
@@ -332,8 +354,8 @@ public class CommonConfig {
 				ViewerEffectConfig.Skybox sky = (ViewerEffectConfig.Skybox) raw_view;
 				
 				if (sky.model != null) {
-					typeTreeNode.displayIcon = iconData.sky;
-					TreeNode refTreeNode = new TreeNode("Model references...", iconData.object);
+					typeTreeNode.displayIcon = Icon.sky;
+					TreeNode refTreeNode = new TreeNode("Referenced assets:", Icon.object);
 					
 					DefaultMutableTreeNode refTreeNodeTree;
 					DefaultMutableTreeNode newModelTreeNodeTree;
@@ -345,7 +367,7 @@ public class CommonConfig {
 					} else {
 						//Parent to the reference folder, aka lastTreeNode
 						//Here, we need to create the modelTreeNode
-						TreeNode modelTreeNode = new TreeNode(fileName, iconData.model);
+						TreeNode modelTreeNode = new TreeNode(fileName, Icon.model);
 						newModelTreeNodeTree = treeRenderer.addNode(lastTreeNode, modelTreeNode);
 						//Mode TreeNode made. Now the type + ref go into the new model TreeNode.
 						treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
@@ -355,19 +377,20 @@ public class CommonConfig {
 					
 				} else {
 					DefaultMutableTreeNode typeTreeNodeTree;
-					typeTreeNode.displayIcon = iconData.unknown;
+					typeTreeNode.displayIcon = Icon.unknown;
 					if (lastTreeNode == null) {
 						typeTreeNodeTree = treeRenderer.addNodeRoot(typeTreeNode);
 					} else {
 						typeTreeNodeTree = treeRenderer.addNode(lastTreeNode, typeTreeNode);
 					}
-					TreeNode info = new TreeNode("The file this references is an internal data reference.", iconData.info);
-					TreeNode info2 = new TreeNode("Any models of this type inherit its properties.", iconData.info);
+					TreeNode info = new TreeNode("Unknown Type", Icon.info);
+					Logger.AppendLn("The model you have imported is not a known type for the standard ThreeRings model library.",
+							"The classname of this type is: " + modelClassName);
 					treeRenderer.addNode(typeTreeNodeTree, info);
-					treeRenderer.addNode(typeTreeNodeTree, info2);
+					
 				}
 			} else {
-				typeTreeNode.displayIcon = iconData.unknown;
+				typeTreeNode.displayIcon = Icon.unknown;
 				if (lastTreeNode == null) {
 					treeRenderer.addNodeRoot(typeTreeNode);
 				} else {
@@ -375,16 +398,17 @@ public class CommonConfig {
 				}
 			}
 		} else {
-			typeTreeNode.displayIcon = iconData.unknown;
+			typeTreeNode.displayIcon = Icon.unknown;
 			if (lastTreeNode == null) {
 				treeRenderer.addNodeRoot(typeTreeNode);
 			} else {
-				TreeNode modelTreeNode = new TreeNode(fileName, iconData.model);
+				TreeNode modelTreeNode = new TreeNode(fileName, Icon.model);
 				DefaultMutableTreeNode newModelTreeNodeTree = treeRenderer.addNode(lastTreeNode, modelTreeNode);
 				//Mode TreeNode made. Now the type + ref go into the new model TreeNode.
 				treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
 			}
 		}
+		MainGui.INSTANCE.updateTree(treeRenderer.getDataTreePath());
 	}
 	
 	protected void handleModelMain(Object raw, String fileName) throws IOException {
@@ -419,18 +443,10 @@ public class CommonConfig {
 	}
 	
 	protected void openReferenceFromPath(String path, DefaultMutableTreeNode parent, boolean isAttachment) throws IOException {
-		File ref = new File(resourceDir + path);
+		File ref = IOHelper.openModelReferenceTo(path);
 		FileInputStream fileIn = new FileInputStream(ref);
 		BinaryImporter stockImporter = new BinaryImporter(fileIn);
 		handleModelMain(stockImporter.readObject(), ref.getName(), parent, isAttachment);
 		stockImporter.close();
-	}
-	
-	public static void setLogger(Logger l) {
-		log = l;
-	}
-	
-	public static void setResourceDir(String dir) {
-		resourceDir = dir;
 	}
 }

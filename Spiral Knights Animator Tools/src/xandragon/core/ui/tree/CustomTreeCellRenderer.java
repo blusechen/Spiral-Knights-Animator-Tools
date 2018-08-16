@@ -11,11 +11,7 @@ import javax.swing.tree.TreeCellRenderer;
 @SuppressWarnings("serial")
 public class CustomTreeCellRenderer extends DefaultTreeCellRenderer implements TreeCellRenderer {
 	
-	protected Icon iconData = new Icon();
-	
-	public CustomTreeCellRenderer() {
-		
-	}
+	public CustomTreeCellRenderer() {}
 
 	@Override
 	public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected, boolean expanded, boolean leaf, int row, boolean hasFocus) {
@@ -27,6 +23,6 @@ public class CustomTreeCellRenderer extends DefaultTreeCellRenderer implements T
 	protected ImageIcon getIcon(Object ent) {
 		DefaultMutableTreeNode tree_node = (DefaultMutableTreeNode) ent;
 		TreeNode node = ((TreeNode) tree_node.getUserObject());
-		return node.displayIcon != null ? node.displayIcon : iconData.none;
+		return node.displayIcon != null ? node.displayIcon : Icon.none;
 	}
 }

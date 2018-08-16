@@ -22,16 +22,17 @@ public class OpenFileFilter extends FileFilter {
 	}
 	
 	public OpenFileFilter(String extension, String typeDescription, boolean dir) {
-		fileExt = extension;
+		fileExt = extension.toUpperCase();
 		description = typeDescription;
 		isDir = dir;
 	}
+	
 
 	public boolean accept(File f) {
 		if (f.isDirectory())
 			return true;
 		if (isDir)
-			return true; //just do this so we don't ever compare extension
+			return true; //just do this so we don't ever compare extensions
 		return (f.getName().toLowerCase().endsWith(fileExt.toLowerCase()));
 	}
 

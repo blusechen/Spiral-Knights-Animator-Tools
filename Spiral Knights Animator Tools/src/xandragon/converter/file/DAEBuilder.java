@@ -20,20 +20,31 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Text;
 
-import com.threerings.opengl.model.Model;
+import com.threerings.math.Matrix4f;
+import com.threerings.math.Quaternion;
+import com.threerings.math.Transform3D;
+import com.threerings.math.Vector3f;
 import com.threerings.opengl.model.config.ArticulatedConfig.Attachment;
 import com.threerings.opengl.model.config.ArticulatedConfig.Node;
+import com.threerings.opengl.model.config.ArticulatedConfig.NodeTransform;
 import com.threerings.opengl.model.config.ModelConfig.VisibleMesh;
 
+import xandragon.converter.model.BoneDepth;
 import xandragon.converter.model.Geometry;
+import xandragon.converter.model.Model;
+import xandragon.core.Main;
+import xandragon.util.Logger;
 
 @SuppressWarnings("unused")
 
 public class DAEBuilder {
-
-	protected File OUTPUT_FILE;
-	protected Document DOCUMENT;
-	protected Element ROOT;
+	
+	private static final String IDENTITY_MATRIX = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1";
+	
+	private Model processedModel;
+	private File OUTPUT_FILE;
+	private Document DOCUMENT;
+	private Element ROOT;
 	private Element lib_images;
 	private Element lib_effects;
 	private Element lib_materials;
@@ -43,12 +54,16 @@ public class DAEBuilder {
 	private Element lib_visual_scene;
 	private Element base_scene;
 	
-	public DAEBuilder(File out) throws ParserConfigurationException {
-		DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
-		DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
-		DOCUMENT = docBuilder.newDocument();
-		OUTPUT_FILE = out;
-		
+	public DAEBuilder(File out, Model mdl) {
+		try {
+			processedModel = mdl;
+			DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
+			DocumentBuilder docBuilder = docFactory.newDocumentBuilder();
+			DOCUMENT = docBuilder.newDocument();
+			OUTPUT_FILE = out;
+		} catch (ParserConfigurationException e) {
+			Logger.AppendLn("A critical error has occurred when attempting to save the model as a DAE. Location: DAE data creation. Stack trace:", e.getStackTrace());
+		}
 		/////////////////////////////////////
 		//PART 1: CREATE ROOT AND BASE DATA//
 		/////////////////////////////////////
@@ -65,18 +80,22 @@ public class DAEBuilder {
 		Element contributor = DOCUMENT.createElement("contributor");
 		Element authorElement = DOCUMENT.createElement("author");
 		Element authoringTool = DOCUMENT.createElement("authoring_tool");
+		Element appVersion = DOCUMENT.createElement("authoring_tool_version");
 		Element unit = DOCUMENT.createElement("unit");
 		Element upAxis = DOCUMENT.createElement("up_axis");
 		
 		Text author = DOCUMENT.createTextNode("Xan the Dragon");
 		Text tool = DOCUMENT.createTextNode("Spiral Knights Animator Tools");
-		Text upAxisTxt = DOCUMENT.createTextNode("Z_UP");
+		Text version = DOCUMENT.createTextNode(Main.SK_ANIM_VER);
+		Text upAxisTxt = DOCUMENT.createTextNode("Y_UP");
 		
 		authorElement.appendChild(author);
 		authoringTool.appendChild(tool);
+		appVersion.appendChild(version);
 		
 		contributor.appendChild(authorElement);
 		contributor.appendChild(authoringTool);
+		contributor.appendChild(appVersion);
 				
 		upAxis.appendChild(upAxisTxt);
 		
@@ -117,10 +136,12 @@ public class DAEBuilder {
  		base_scene.setAttribute("id", "Scene");
  		base_scene.setAttribute("name", "Scene");
  		lib_visual_scene.appendChild(base_scene);
+ 		
+ 		process();
 	}
 	
 	@SuppressWarnings("rawtypes")
-	protected Element appendGeometryData(Geometry geo, ArrayList data, String type, String name) {
+	private Element appendGeometryData(Geometry geo, ArrayList data, String type, String name) {
 		String list = "";
 		if (data == geo.vertices) {
 			list = geo.createVertexList();
@@ -187,7 +208,7 @@ public class DAEBuilder {
 		return src;
 	}
 	
-	public void appendNewGeometry(Geometry geo, String name, int ID) {
+	public void appendNewGeometry(Geometry geo, String name, int id) {
 		//PRE-WRITE: GET VALUES FROM GEOMETRY.
 		int vertexSize = geo.vertices.size();
 		int normalSize = geo.normals.size();
@@ -197,50 +218,50 @@ public class DAEBuilder {
 		//PART 1: HEADING//
 		///////////////////	
 		Element geometryId = DOCUMENT.createElement("geometry");
-		geometryId.setAttribute("id", name + ID +"-mesh");
-		geometryId.setAttribute("name", name + ID);
+		geometryId.setAttribute("id", name + id +"-mesh");
+		geometryId.setAttribute("name", name + id);
 		Element mesh = DOCUMENT.createElement("mesh");
 		geometryId.appendChild(mesh);
 		
 		////////////////////
 		//PART 2: RAW DATA//
 		////////////////////	
-		mesh.appendChild(appendGeometryData(geo, geo.vertices, "positions", name + ID));
-		mesh.appendChild(appendGeometryData(geo, geo.normals, "normals", name + ID));
-		mesh.appendChild(appendGeometryData(geo, geo.uvs, "map-0", name + ID));
+		mesh.appendChild(appendGeometryData(geo, geo.vertices, "positions", name + id));
+		mesh.appendChild(appendGeometryData(geo, geo.normals, "normals", name + id));
+		mesh.appendChild(appendGeometryData(geo, geo.uvs, "map-0", name + id));
 		
 		//////////////////////
 		//PART 3: REFERENCES//
 		//////////////////////
 		Element vertices = DOCUMENT.createElement("vertices");
- 		vertices.setAttribute("id", name + ID +"-mesh-vertices");
+ 		vertices.setAttribute("id", name + id +"-mesh-vertices");
  		mesh.appendChild(vertices);
  		
  		Element posInput = DOCUMENT.createElement("input");
  		posInput.setAttribute("semantic", "POSITION");
- 		posInput.setAttribute("source", "#"+ name + ID +"-mesh-positions");
+ 		posInput.setAttribute("source", "#"+ name + id +"-mesh-positions");
  		vertices.appendChild(posInput);
  		
  		Element triangleList = DOCUMENT.createElement("triangles");
  		triangleList.setAttribute("count", String.valueOf(geo.indices.size()));
- 		triangleList.setAttribute("material", name + ID + "-material");
+ 		triangleList.setAttribute("material", name + id + "-material");
  		mesh.appendChild(triangleList);
  		
  		Element vtxInput = DOCUMENT.createElement("input");
  		vtxInput.setAttribute("semantic", "VERTEX");
- 		vtxInput.setAttribute("source", "#"+ name + ID +"-mesh-vertices");
+ 		vtxInput.setAttribute("source", "#"+ name + id +"-mesh-vertices");
  		vtxInput.setAttribute("offset", "0");
  		triangleList.appendChild(vtxInput);
  		
  		Element nrmInput = DOCUMENT.createElement("input");
  		nrmInput.setAttribute("semantic", "NORMAL");
- 		nrmInput.setAttribute("source", "#"+ name + ID +"-mesh-normals");
+ 		nrmInput.setAttribute("source", "#"+ name + id +"-mesh-normals");
  		nrmInput.setAttribute("offset", "0");
  		triangleList.appendChild(nrmInput);
  		
  		Element uvInput = DOCUMENT.createElement("input");
  		uvInput.setAttribute("semantic", "TEXCOORD");
- 		uvInput.setAttribute("source", "#"+ name + ID +"-mesh-map-0");
+ 		uvInput.setAttribute("source", "#"+ name + id +"-mesh-map-0");
  		uvInput.setAttribute("offset", "0");
  		uvInput.setAttribute("set", "0");
  		triangleList.appendChild(uvInput);
@@ -253,65 +274,435 @@ public class DAEBuilder {
  		idxElement.appendChild(idxValue);
  		triangleList.appendChild(idxElement);
  		
+ 		////////////////////////////
+ 		//PART 5: BONE REFERENCING//
+ 		////////////////////////////
+ 		//This is required even without bones since this method handles appending things without a skeleton.
+ 		//EDIT: Do not permit this to continue with this function if there IS a bone list!
+ 		//It will cause a double-append
+ 		if (geo.boneList == null) appendBoneReference(geo, name, id);
+ 		
  		//Complete:
  		lib_geometry.appendChild(geometryId);
 	}
 	
-	public void appendNewBoneData(String name, int ID) {
-		//Append the base scene data.
-		Element scNode = DOCUMENT.createElement("node");
-		scNode.setAttribute("id", name + ID);
-		scNode.setAttribute("name", name + ID);
-		scNode.setAttribute("type", "NODE");
-		base_scene.appendChild(scNode);
+	public void appendNewBoneGeometry(Geometry geo, String name, int id) {
+		if (geo.boneList == null) {
+			return; //See BinaryParser
+		}
+		//Start off with the controller id for the bones.
+		Element controller = DOCUMENT.createElement("controller");
+		controller.setAttribute("id", name + id + "-skin");
+		lib_control.appendChild(controller);
 		
-		//Then...
+		Element skin = DOCUMENT.createElement("skin");
+		skin.setAttribute("source", "#" + name + id + "-mesh");
+		controller.appendChild(skin);
 		
-		//NOTE: I'M COMMENTING THESE OUT SO THAT IT ALWAYS WORKS.
+		Element bindMtx = DOCUMENT.createElement("bind_shape_matrix");
+		Text bindVal = DOCUMENT.createTextNode("1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1");
+		bindMtx.appendChild(bindVal);
+		controller.appendChild(bindMtx);
 		
-		//if (skin.boneIndices.size() == 0 || skin.boneWeights.size() == 0) {
-			//Bone data is not present in this model.
-			//Append the closing data.
-			Element trsMatrix = DOCUMENT.createElement("matrix");
-			trsMatrix.setAttribute("sid", "transform");
-			Text mtxVal = DOCUMENT.createTextNode("1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"); //Identity matrix.
-			trsMatrix.appendChild(mtxVal);
-			scNode.appendChild(trsMatrix);
-			
-			Element geoInstance = DOCUMENT.createElement("instance_geometry");
-			geoInstance.setAttribute("url", "#"+ name + ID +"-mesh");
-			geoInstance.setAttribute("name", name + ID);
-			scNode.appendChild(geoInstance);
-			
-			Element mtlBinding = DOCUMENT.createElement("bind_material");
-			geoInstance.appendChild(mtlBinding);
-			Element technique = DOCUMENT.createElement("technique_common");
-			mtlBinding.appendChild(technique);
-			
-			Element mtlInstance = DOCUMENT.createElement("instance_material");
-			mtlInstance.setAttribute("symbol", name + ID + "-material");
-			mtlInstance.setAttribute("target", "#" + name + ID + "-material");
-			technique.appendChild(mtlInstance);
-			
-			//And then be done with it.
-			return;
-		//}
+		Element src_joints = DOCUMENT.createElement("source");
+		src_joints.setAttribute("id", name + id + "-skin-joints");
+		skin.appendChild(src_joints);
 		
-		//Continue
+		//The real bone list.
+		ArrayList<String> allBoneListObj = new ArrayList<String>(geo.parentModel.bonelist.size() - 1);
+		String[] allBoneList = new String[geo.parentModel.bonelist.size() - 1];
+		ArrayList<Node> compiledBonesObj = new ArrayList<Node>(geo.parentModel.bonelist.size() - 1);
+		Node[] compiledBones = new Node[geo.parentModel.bonelist.size() - 1];
+		
+		for (BoneDepth depth : geo.parentModel.bonelist) {
+			boolean isRoot = depth.bone.name.contains("ROOT") && depth.bone.name.startsWith("%") && depth.bone.name.endsWith("%");
+			if (!isRoot) {
+				allBoneListObj.add(depth.bone.name.replace(" ", "_"));
+				compiledBonesObj.add(depth.bone);
+			}
+		}
+		allBoneListObj.trimToSize();
+		compiledBonesObj.trimToSize();
+		allBoneList = allBoneListObj.toArray(allBoneList);
+		compiledBones = compiledBonesObj.toArray(compiledBones);
+		
+		Element nameArray = DOCUMENT.createElement("Name_array");
+		nameArray.setAttribute("count", String.valueOf(allBoneList.length));
+		nameArray.setAttribute("id", name + id + "-skin-joints-array");
+		String nameListStr = "";
+		for (String s : allBoneList) {
+			nameListStr = nameListStr + s + " ";
+		}
+		nameListStr = nameListStr.trim();
+		Text nameList = DOCUMENT.createTextNode(nameListStr);
+		nameArray.appendChild(nameList);
+		src_joints.appendChild(nameArray);
+		
+		//Technique for joints
+		Element joint_technique = DOCUMENT.createElement("technique_common");
+		Element joint_technique_accessor = DOCUMENT.createElement("accessor");
+		joint_technique_accessor.setAttribute("source", "#" + name + id + "-skin-joints-array");
+		joint_technique_accessor.setAttribute("count", String.valueOf(allBoneList.length));
+		joint_technique_accessor.setAttribute("stride", "1");
+		Element joint_technique_param = DOCUMENT.createElement("param");
+		joint_technique_param.setAttribute("name", "JOINT");
+		joint_technique_param.setAttribute("type", "name");
+		
+		joint_technique_accessor.appendChild(joint_technique_param);
+		joint_technique.appendChild(joint_technique_accessor);
+		src_joints.appendChild(joint_technique);
+		
+		//Weights
+		String weightsStr = "";
+		//int c = 0;
+		for (int idx = 0; idx < geo.indices.size(); idx++) {
+			weightsStr = weightsStr + geo.boneWeights.get(geo.indices.get(idx) * 4).floatValue() + " ";
+			//weightsStr = weightsStr + geo.boneWeights.get(geo.indices.get(idx)).floatValue() + " ";
+			//c++; //what a funny joke
+		}
+		weightsStr = weightsStr.trim();
+		
+		Element src_weights = DOCUMENT.createElement("source");
+		src_weights.setAttribute("id", name + id + "-skin-weights");
+		skin.appendChild(src_weights);
+		
+		Element weight_floatArray = DOCUMENT.createElement("float_array");
+		weight_floatArray.setAttribute("id", name + id + "-skin-weights-array");
+		weight_floatArray.setAttribute("count", String.valueOf(geo.indices.size()));
+		src_weights.appendChild(weight_floatArray);
+		
+		Text weight_array = DOCUMENT.createTextNode(weightsStr);
+		weight_floatArray.appendChild(weight_array);
+		
+		//Technique for weights
+		Element weight_technique = DOCUMENT.createElement("technique_common");
+		Element weight_technique_accessor = DOCUMENT.createElement("accessor");
+		weight_technique_accessor.setAttribute("source", "#" + name + id + "-skin-weights-array");
+		weight_technique_accessor.setAttribute("count", String.valueOf(geo.indices.size()));
+		weight_technique_accessor.setAttribute("stride", "1");
+		Element weight_technique_param = DOCUMENT.createElement("param");
+		weight_technique_param.setAttribute("name", "WEIGHT");
+		weight_technique_param.setAttribute("type", "float");
+		
+		weight_technique_accessor.appendChild(weight_technique_param);
+		weight_technique.appendChild(weight_technique_accessor);
+		src_weights.appendChild(weight_technique);
+		
+		//Transforms
+		String matrixStr = "";
+		
+		//had to stare at my complete shit code from Spiral Knights Model Converter (the old thing) for so long to get this damn thing working.
+		//Sorry I took ... Well no, I have audio for this.
+		//https://clyp.it/zqombyub
+		
+		//jfc did I even have an idea for what good code writing is? That code makes me want to go back in time and slap myself.
+		//So basically what I did was go through the indices (which each have four values), grabbing only the first one since that one seems to be the only used one.
+		//After that, I had two values which I assume were "currentIndex" and "finalIndex" (they had bad names)...
+		
+		//Following that I got a name variable for grabbing a bone name from the current bone index, then
+		//I iterated through some global variable I had named "compiled_bones" which was just all of the bones compiled into a list.
+		
+		//I finally compared if the names were the same. If they were, I would set this final index value to the current index of the for loop.
+		//...And then I subtracted...?
+		//Ok screw this I'll just rewrite it below, read that instead.
+		//I mean, what the hell? It DID work....
+		//I'm not gonna question my shitty-code self.
+		
+		String vtxStr = "";
+		String vcStr = "";
+		//UPDATE: Upon looking at the construction of the code, the proposed "bone_indices" variable is actually the same length as the mesh indices.
+		//boneIndices -> indices
+		//int bIdx = 0;
+		
+		for (int idx = 0; idx < geo.indices.size(); idx++) {
+			//And I was LAZY about this one too. I suppose I'll just carry that over here because I'm insecure.
+			try {
+				int meshIndex = geo.indices.get(idx);
+				int boneIndex = geo.boneIndices.get(meshIndex * 4); //That's it!
+				//bIdx += 4;
+				
+				//Ok here's that part I was confused about.
+				int currentIndex = boneIndex;
+				int finalIndex = boneIndex;
+				String goalName = geo.boneList[boneIndex].replace(" ", "_").toLowerCase();
+				for (int jdx = 0; jdx < allBoneList.length; jdx++) {
+					String currentName = allBoneList[jdx].replace(" ", "_").toLowerCase();
+					if (currentName.equalsIgnoreCase(goalName)) {
+						finalIndex = jdx;
+						break;
+					}
+				}
+				
+				//Ok ok here it is right here
+				//this is the insanity I was confused about.
+				boneIndex -= (currentIndex - finalIndex);
+				
+				//So basically what I did was grab the indices
+				vtxStr = vtxStr + boneIndex + " " + meshIndex + " ";
+				
+			} catch (IndexOutOfBoundsException e) {
+				System.out.println("Out of bounds " + idx);
+				//this_is_fine_fire_dog.png
+			}
+		}
+		for (int i = 0; i < geo.indices.size(); i++) {
+			vcStr = vcStr + "1 ";
+		}
+		
+		String vtxamount = String.valueOf(geo.indices.size()); //was c
+		vtxStr = vtxStr.trim();
+		vcStr = vcStr.trim();
+		
+		Element vtx_weights = DOCUMENT.createElement("vertex_weights");
+		vtx_weights.setAttribute("count", vtxamount);
+		Element sem_joint = DOCUMENT.createElement("input");
+		sem_joint.setAttribute("semantic", "JOINT");
+		sem_joint.setAttribute("source", "#" + name + id + "-skin-joints");
+		sem_joint.setAttribute("offset", "0");
+		Element sem_weight = DOCUMENT.createElement("input");
+		sem_weight.setAttribute("semantic", "WEIGHT");
+		sem_weight.setAttribute("source", "#" + name + id + "-skin-weights");
+		sem_weight.setAttribute("offset", "1");
+		
+		//INVERSE BIND MATRIX
+		Element src_bindmtx = DOCUMENT.createElement("source");
+		src_bindmtx.setAttribute("id", name + id + "-skin-joints-bind");
+		
+		//Node bone = geo.thisBone;
+		
+		String boneTransformationArrayText = "";
+		int boneMatrixCount = 0;
+		int boneRawCount = 0;
+		for (Node bone : compiledBones) {
+			boneTransformationArrayText = boneTransformationArrayText + getMatrixAsString(bone) + " ";
+			boneMatrixCount += 16;
+			boneRawCount++;
+		}
+		boneTransformationArrayText = boneTransformationArrayText.trim();
+		
+		Element bindmtx_array = DOCUMENT.createElement("float_array");
+		bindmtx_array.setAttribute("count", String.valueOf(boneMatrixCount));
+		bindmtx_array.setAttribute("sid", name + id + "-skin-joints-bind-array");
+		Text bindmtx_arraytext = DOCUMENT.createTextNode(boneTransformationArrayText);
+		bindmtx_array.appendChild(bindmtx_arraytext);
+		
+		Element bindmtx_technique = DOCUMENT.createElement("technique_common");
+		Element bindmtx_accessor = DOCUMENT.createElement("accessor");
+		bindmtx_accessor.setAttribute("count", String.valueOf(boneRawCount));
+		bindmtx_accessor.setAttribute("source", "#" + name + id + "-skin-joints-bind-array");
+		bindmtx_accessor.setAttribute("stride", "16");
+		
+		Element bindmtx_param = DOCUMENT.createElement("param");
+		bindmtx_param.setAttribute("name", "TRANSFORM");
+		bindmtx_param.setAttribute("type", "float4x4");
+		
+		bindmtx_accessor.appendChild(bindmtx_param);
+		bindmtx_technique.appendChild(bindmtx_accessor);
+		src_bindmtx.appendChild(bindmtx_array);
+		src_bindmtx.appendChild(bindmtx_technique);
+		skin.appendChild(src_bindmtx);
+		
+		Element jointData = DOCUMENT.createElement("joints");
+		
+		Element inputJoints = DOCUMENT.createElement("input");
+		inputJoints.setAttribute("semantic", "JOINT");
+		inputJoints.setAttribute("source", "#" + name + id + "-skin-joints");
+		jointData.appendChild(inputJoints);
+		
+		Element inputTransform = DOCUMENT.createElement("input");
+		inputTransform.setAttribute("semantic", "INV_BIND_MATRIX");
+		inputTransform.setAttribute("source", "#" + name + id + "-skin-joints-bind");
+		jointData.appendChild(inputTransform);
+		
+		skin.appendChild(jointData);
 		
 		
+		Element vcount = DOCUMENT.createElement("vcount");
+		Text vcountstr = DOCUMENT.createTextNode(vcStr);
+		vcount.appendChild(vcountstr);
+		
+		Element v = DOCUMENT.createElement("v");
+		Text vstr = DOCUMENT.createTextNode(vtxStr);
+		v.appendChild(vstr);
+
+		vtx_weights.appendChild(sem_joint);
+		vtx_weights.appendChild(sem_weight);
+		vtx_weights.appendChild(vcount);
+		vtx_weights.appendChild(v);
+		skin.appendChild(vtx_weights);
+		
+		appendBoneReference(geo, name, id);
 	}
 	
-	public void appendNewMaterial(String name, int ID) {
+	//Called by above.
+	private void appendBoneReference(Geometry geo, String name, int id) {
+		Node bone = geo.thisBone;
+		
+		Element mtlBindParent = null;
+		
+		//Append the base scene data.
+ 		Element topLevelGeoNode = DOCUMENT.createElement("node");
+ 		
+		if (bone == null) {
+			
+	 		topLevelGeoNode.setAttribute("id", name + id);
+	 		topLevelGeoNode.setAttribute("name", name + id);
+	 		topLevelGeoNode.setAttribute("type", "NODE");
+			
+			//Just make a default matrix for the root transform.
+			Element trsMatrix = DOCUMENT.createElement("matrix");
+			trsMatrix.setAttribute("sid", "transform");
+			Text mtxVal = DOCUMENT.createTextNode("1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1");
+			trsMatrix.appendChild(mtxVal);
+			topLevelGeoNode.appendChild(trsMatrix);
+			
+			Element geoInstance = DOCUMENT.createElement("instance_geometry");
+			geoInstance.setAttribute("url", "#"+ name + id +"-mesh");
+			geoInstance.setAttribute("name", name + id);
+			topLevelGeoNode.appendChild(geoInstance);
+			
+			Element mainNode = DOCUMENT.createElement("node");
+			mainNode.setAttribute("id", name + id);
+			mainNode.setAttribute("name", name + id);
+			mainNode.setAttribute("type", "NODE");
+			//base_scene.appendChild(mainNode);
+			//topLevelGeoNode.appendChild(mainNode);
+			//Material is done at the end (due to being common to both conditions)
+			
+			mtlBindParent = geoInstance;
+		} else {
+			//And we'll add extra if we have bones
+			
+			//Note: Matrices are interesting.
+			/*
+			 * R00 R01 R02 X
+			 * R10 R11 R12 Y
+			 * R20 R21 R22 Z
+			 * 0   0   0   1
+			 */
+			
+			//This is a new armature which is made for each model.
+			//Each geometry has its root node. We need to generate a node tree from it.
+			
+			//Note: This stuff goes under a new node tag for each model, aka put into base_scene. This references an armature, which I defined in the lines above.
+			/*Element mainNode = DOCUMENT.createElement("node");
+			mainNode.setAttribute("id", name + id);
+			mainNode.setAttribute("name", name + id);
+			mainNode.setAttribute("type", "NODE");
+			base_scene.appendChild(mainNode);
+			
+			Element transformationMatrix = DOCUMENT.createElement("matrix");
+			transformationMatrix.setAttribute("sid", "transform");
+			Text matrixValue = DOCUMENT.createTextNode("1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1");
+			transformationMatrix.appendChild(matrixValue);*/
+			
+			//Append the bone tree.
+			//assembleBoneTree(topLevelGeoNode, bone);
+			
+			
+			//Reference a controller.
+			//controller.setAttribute("id", name + id + "-skin");
+			Element controller_ref = DOCUMENT.createElement("instance_controller");
+			controller_ref.setAttribute("url", "#" + name + id + "-skin");
+			Element skeleton = DOCUMENT.createElement("skeleton");
+			Text mainBoneSkele = DOCUMENT.createTextNode("#" + bone.name);
+			skeleton.appendChild(mainBoneSkele);
+			controller_ref.appendChild(skeleton);
+			
+			topLevelGeoNode = assembleBoneTree(null, bone, "#" + name + id + "-mesh");
+			//assembleBoneTree(topLevelGeoNode, bone, "#" + name + id + "-mesh");
+			//Element boneTree = assembleBoneTree(null, bone, "#" + name + id + "-mesh");
+			
+			mtlBindParent = controller_ref;
+		}
+		
+		base_scene.appendChild(topLevelGeoNode);
+		
+		Element mtlBinding = DOCUMENT.createElement("bind_material");
+		mtlBindParent.appendChild(mtlBinding);
+		Element technique = DOCUMENT.createElement("technique_common");
+		mtlBinding.appendChild(technique);
+		
+		Element mtlInstance = DOCUMENT.createElement("instance_material");
+		mtlInstance.setAttribute("symbol", name + id + "-material");
+		mtlInstance.setAttribute("target", "#" + name + id + "-material");
+		technique.appendChild(mtlInstance);
+		
+		//topLevelGeoNode.appendChild(mtlBindParent); //WRONG! Turns out the line below was right, it just had to be in its own node.
+		Element secondaryGeoNode = DOCUMENT.createElement("node");
+		secondaryGeoNode.setAttribute("id", name + id);
+		secondaryGeoNode.setAttribute("name", name + id);
+		secondaryGeoNode.setAttribute("type", "NODE");
+		secondaryGeoNode.appendChild(mtlBindParent);
+		//base_scene.appendChild(mtlBindParent);
+		base_scene.appendChild(secondaryGeoNode);
+	}
+	/*
+	private String getMatrixAsString(Node bone) {
+		if (bone == null) return IDENTITY_MATRIX;
+		Transform3D mainTransformation = bone.transform;
+		Matrix4f matrix = new Matrix4f();
+		
+		int mainType = mainTransformation.getType();
+		if (mainType == 0 || mainType == 1 || mainType == 2) {
+			//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
+			matrix = new Matrix4f().setToTransform(mainTransformation.extractTranslation(), mainTransformation.extractRotation());
+		} else {
+			//affine, general
+			matrix = mainTransformation.getMatrix();
+		}
+		
+		return matrix.encodeToString().replace(", ", " ");
+	}
+	*/
+	private String getMatrixAsString(Node bone, boolean invert) {
+		if (!invert) return getMatrixAsString(bone);
+		if (bone == null) return IDENTITY_MATRIX;
+		Transform3D mainTransformation = bone.invRefTransform;
+		Matrix4f matrix = new Matrix4f();
+		
+		int mainType = mainTransformation.getType();
+		if (mainType == 0 || mainType == 1 || mainType == 2) {
+			//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
+			matrix = new Matrix4f().setToRotation(mainTransformation.extractRotation());
+		} else {
+			//affine, general
+			matrix = new Matrix4f().setToRotation(mainTransformation.getMatrix().extractRotation());
+		}
+		
+		return matrix.encodeToString().replace(", ", " ");
+	}
+	
+	private String getMatrixAsString(Node bone) {
+		if (bone == null) return IDENTITY_MATRIX;
+		Transform3D mainTransformation = bone.invRefTransform;
+		Matrix4f matrix = new Matrix4f();
+		
+		int mainType = mainTransformation.getType();
+		if (mainType == 0 || mainType == 1 || mainType == 2) {
+			//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
+			Vector3f transform = mainTransformation.extractTranslation().mult(-1);
+			Quaternion rotation = mainTransformation.extractRotation().invert();
+			Vector3f v3Rot = rotation.toAngles();
+			
+			Quaternion newRotation = rotation.fromAnglesZXY(0f, (float) (v3Rot.x + Math.toRadians(90f)), 0f);
+			Vector3f newTransform = new Vector3f(transform.x, transform.z, -transform.y);
+			matrix = new Matrix4f().setToTransform(newTransform, newRotation);
+		}
+		
+		return matrix.encodeToString().replace(", ", " ");
+	}
+	
+	public void appendNewMaterial(String name, int id) {
 		////////////////////////////
 		//PART 1: MATERIAL HEADING//
 		////////////////////////////
 		Element materialId = DOCUMENT.createElement("material");
-		materialId.setAttribute("id", name + ID +"-material");
-		materialId.setAttribute("name", name + ID);
+		materialId.setAttribute("id", name + id +"-material");
+		materialId.setAttribute("name", name + id);
 		
 		Element mtlEffect = DOCUMENT.createElement("effect");
-		mtlEffect.setAttribute("id", name + ID + "-effect");
+		mtlEffect.setAttribute("id", name + id + "-effect");
 		
 		Element mtlProfile = DOCUMENT.createElement("profile_COMMON");
 		Element mtlTechnique = DOCUMENT.createElement("technique");
@@ -382,52 +773,120 @@ public class DAEBuilder {
 		float_Refraction.appendChild(value_Refraction);
 		
 		Element instanceEffect = DOCUMENT.createElement("instance_effect");
-		instanceEffect.setAttribute("url", "#" + name + ID + "-effect");
+		instanceEffect.setAttribute("url", "#" + name + id + "-effect");
 		materialId.appendChild(instanceEffect);
 		
 		//And finally append
 		lib_materials.appendChild(materialId);
 		lib_effects.appendChild(mtlEffect);
 	}
+	/*
+	private Element assembleBoneTree(Element parentElement, Node node) {
+		return assembleBoneTree(parentElement, node, null);
+	}
+	*/
+	private Element assembleBoneTree(Element parentElement, Node node, String sid) {
+		//System.out.println(node.toString());
+		Element mdlNode = DOCUMENT.createElement("node");
+		String name = node.name.replace(" ", "_");
+		mdlNode.setAttribute("id", name);
+		mdlNode.setAttribute("name", name);
+		if (parentElement != null) mdlNode.setAttribute("sid", name);
+		//mdlNode.setAttribute("sid", sid);
+		if (parentElement != null) {
+			mdlNode.setAttribute("type", "JOINT");
+		} else {
+			mdlNode.setAttribute("type", "NODE");
+		}
+		
+		Element matrixNode = DOCUMENT.createElement("matrix");
+		matrixNode.setAttribute("sid", "transform");
+		//For the transformation, the method outputs each value separated by ", ". Keep that in mind.
+		
+		//95% sure I need to invert this matrix, it says "inv" at the start which means it's inverted, so I need it normal. .invert();
+		
+		/*
+		Transform3D mainTransformation = node.transform;
+		Matrix4f matrix = new Matrix4f();
+		
+		int mainType = mainTransformation.getType();
+		if (mainType == 0 || mainType == 1 || mainType == 2) {
+			//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
+			matrix = new Matrix4f().setToTransform(mainTransformation.extractTranslation(), mainTransformation.extractRotation());
+		} else {
+			//affine, general
+			matrix = mainTransformation.getMatrix();
+		}
+		
+		String transformation = matrix.encodeToString().replace(", ", " ");
+		*/
+		//String transformation = getMatrixAsString(node, true);
+		Text matrixText = DOCUMENT.createTextNode(IDENTITY_MATRIX); //was transformation
+		
+		matrixNode.appendChild(matrixText);
+		mdlNode.appendChild(matrixNode);
+		
+		if (parentElement != null) parentElement.appendChild(mdlNode);
+		
+		//Now, go through this node's sub-objects.
+		for (Node sub : node.children) {
+			assembleBoneTree(mdlNode, sub, sid); //Computer: Y U DO DIS RECURSION TO ME ლ(ಠ益ಠლ)
+		}
+		return mdlNode;
+	}
 	
-	public void createDAE() throws TransformerException {
-		//Finish up the whole thing.
-		ROOT.appendChild(lib_images);
-		ROOT.appendChild(lib_effects);
-		ROOT.appendChild(lib_materials);
-		ROOT.appendChild(lib_geometry);
-		ROOT.appendChild(lib_control);
-		ROOT.appendChild(lib_nodes);
-		ROOT.appendChild(lib_visual_scene);
-		lib_visual_scene.appendChild(base_scene);
-		
-		Element scene = DOCUMENT.createElement("scene");
-		Element visScene = DOCUMENT.createElement("instance_visual_scene");
-		visScene.setAttribute("url", "#scene");
-		scene.appendChild(visScene);
-		ROOT.appendChild(scene);
-		
-		TransformerFactory transformerFactory = TransformerFactory.newInstance();
-		Transformer transformer = transformerFactory.newTransformer();
-		transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-		transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
-		transformer.setOutputProperty(OutputKeys.METHOD, "xml");
-		
-		DOMSource source = new DOMSource(DOCUMENT);
-		StreamResult result = new StreamResult(new StringWriter());//new StreamResult(System.out);//new StreamResult(new FileOutputStream(_out));
-		
-		transformer.transform(source, result);
-		
-		String xmlString = result.getWriter().toString();
-    	
-    	FileWriter fileWriter;
-    	try {
-    		fileWriter = new FileWriter(OUTPUT_FILE);
-            fileWriter.write(xmlString);
-            fileWriter.flush();
-            fileWriter.close();
-    	} catch (IOException e) {
-    	 
-        }
+	private void process() {
+		String name = processedModel.name;
+		for (int i = 0; i < processedModel.geometry.size(); i++) {
+			appendNewGeometry(processedModel.geometry.get(i), name, i);
+			appendNewBoneGeometry(processedModel.geometry.get(i), name, i);
+			appendNewMaterial("Material", i);
+		}
+	}
+	
+	public void createDAE() {
+		try {
+			//Finish up the whole thing.
+			ROOT.appendChild(lib_images);
+			ROOT.appendChild(lib_effects);
+			ROOT.appendChild(lib_materials);
+			ROOT.appendChild(lib_geometry);
+			ROOT.appendChild(lib_control);
+			ROOT.appendChild(lib_nodes);
+			ROOT.appendChild(lib_visual_scene);
+			lib_visual_scene.appendChild(base_scene);
+			
+			Element scene = DOCUMENT.createElement("scene");
+			Element visScene = DOCUMENT.createElement("instance_visual_scene");
+			visScene.setAttribute("url", "#scene");
+			scene.appendChild(visScene);
+			ROOT.appendChild(scene);
+			
+			TransformerFactory transformerFactory = TransformerFactory.newInstance();
+			Transformer transformer = transformerFactory.newTransformer();
+			transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+			transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
+			transformer.setOutputProperty(OutputKeys.METHOD, "xml");
+			
+			DOMSource source = new DOMSource(DOCUMENT);
+			StreamResult result = new StreamResult(new StringWriter());
+			
+			transformer.transform(source, result);
+			
+			String xmlString = result.getWriter().toString();
+	    	
+	    	FileWriter fileWriter;
+	    	try {
+	    		fileWriter = new FileWriter(OUTPUT_FILE);
+	            fileWriter.write(xmlString);
+	            fileWriter.flush();
+	            fileWriter.close();
+	            Logger.AppendLn("Model has been successfully exported!");
+	    	} catch (IOException e) {
+	    		Logger.AppendLn("A critical error has occurred when attempting to save the model as a DAE. Location: File saving, writing data to file. Stack trace:", e.getStackTrace());
+	        }
+		} catch (TransformerException e) {
+			Logger.AppendLn("A critical error has occurred when attempting to save the model as a DAE. Location: File saving, transforming data. Stack trace:", e.getStackTrace());
+		}
 	}
 }
