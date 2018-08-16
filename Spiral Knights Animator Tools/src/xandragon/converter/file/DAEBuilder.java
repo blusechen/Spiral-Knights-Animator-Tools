@@ -309,30 +309,24 @@ public class DAEBuilder {
 		skin.appendChild(src_joints);
 		
 		//The real bone list.
-		ArrayList<String> allBoneListObj = new ArrayList<String>(geo.parentModel.bonelist.size() - 1);
-		String[] allBoneList = new String[geo.parentModel.bonelist.size() - 1];
-		ArrayList<Node> compiledBonesObj = new ArrayList<Node>(geo.parentModel.bonelist.size() - 1);
-		Node[] compiledBones = new Node[geo.parentModel.bonelist.size() - 1];
+		ArrayList<BoneDepth> bDepthList = geo.parentModel.bonelist;
+		ArrayList<Node> compiledBonesList = new ArrayList<Node>(bDepthList.size());
+		Node[] compiledBones = new Node[0];
+		String nameListStr = "";
 		
-		for (BoneDepth depth : geo.parentModel.bonelist) {
+		for (BoneDepth depth : bDepthList) {
 			boolean isRoot = depth.bone.name.contains("ROOT") && depth.bone.name.startsWith("%") && depth.bone.name.endsWith("%");
 			if (!isRoot) {
-				allBoneListObj.add(depth.bone.name.replace(" ", "_"));
-				compiledBonesObj.add(depth.bone);
+				compiledBonesList.add(depth.bone);
+				nameListStr = nameListStr + depth.bone.name.replace(" ", "_") + " ";
 			}
 		}
-		allBoneListObj.trimToSize();
-		compiledBonesObj.trimToSize();
-		allBoneList = allBoneListObj.toArray(allBoneList);
-		compiledBones = compiledBonesObj.toArray(compiledBones);
+		compiledBonesList.trimToSize();
+		compiledBones = compiledBonesList.toArray(compiledBones);
 		
 		Element nameArray = DOCUMENT.createElement("Name_array");
-		nameArray.setAttribute("count", String.valueOf(allBoneList.length));
+		nameArray.setAttribute("count", String.valueOf(compiledBones.length));
 		nameArray.setAttribute("id", name + id + "-skin-joints-array");
-		String nameListStr = "";
-		for (String s : allBoneList) {
-			nameListStr = nameListStr + s + " ";
-		}
 		nameListStr = nameListStr.trim();
 		Text nameList = DOCUMENT.createTextNode(nameListStr);
 		nameArray.appendChild(nameList);
@@ -342,7 +336,7 @@ public class DAEBuilder {
 		Element joint_technique = DOCUMENT.createElement("technique_common");
 		Element joint_technique_accessor = DOCUMENT.createElement("accessor");
 		joint_technique_accessor.setAttribute("source", "#" + name + id + "-skin-joints-array");
-		joint_technique_accessor.setAttribute("count", String.valueOf(allBoneList.length));
+		joint_technique_accessor.setAttribute("count", String.valueOf(compiledBones.length));
 		joint_technique_accessor.setAttribute("stride", "1");
 		Element joint_technique_param = DOCUMENT.createElement("param");
 		joint_technique_param.setAttribute("name", "JOINT");
@@ -357,7 +351,6 @@ public class DAEBuilder {
 		//int c = 0;
 		for (int idx = 0; idx < geo.indices.size(); idx++) {
 			weightsStr = weightsStr + geo.boneWeights.get(geo.indices.get(idx) * 4).floatValue() + " ";
-			//weightsStr = weightsStr + geo.boneWeights.get(geo.indices.get(idx)).floatValue() + " ";
 			//c++; //what a funny joke
 		}
 		weightsStr = weightsStr.trim();
@@ -368,7 +361,7 @@ public class DAEBuilder {
 		
 		Element weight_floatArray = DOCUMENT.createElement("float_array");
 		weight_floatArray.setAttribute("id", name + id + "-skin-weights-array");
-		weight_floatArray.setAttribute("count", String.valueOf(geo.indices.size()));
+		weight_floatArray.setAttribute("count", String.valueOf(geo.boneWeights.size()));
 		src_weights.appendChild(weight_floatArray);
 		
 		Text weight_array = DOCUMENT.createTextNode(weightsStr);
@@ -378,7 +371,7 @@ public class DAEBuilder {
 		Element weight_technique = DOCUMENT.createElement("technique_common");
 		Element weight_technique_accessor = DOCUMENT.createElement("accessor");
 		weight_technique_accessor.setAttribute("source", "#" + name + id + "-skin-weights-array");
-		weight_technique_accessor.setAttribute("count", String.valueOf(geo.indices.size()));
+		weight_technique_accessor.setAttribute("count", String.valueOf(geo.boneWeights.size()));
 		weight_technique_accessor.setAttribute("stride", "1");
 		Element weight_technique_param = DOCUMENT.createElement("param");
 		weight_technique_param.setAttribute("name", "WEIGHT");
@@ -415,18 +408,19 @@ public class DAEBuilder {
 		//int bIdx = 0;
 		
 		for (int idx = 0; idx < geo.indices.size(); idx++) {
-			//And I was LAZY about this one too. I suppose I'll just carry that over here because I'm insecure.
+			//And I was LAZY about this one too. I suppose I'll just carry that over here because I'm insecure, and I need to get this out
+			//I'll make it pretty in V1.0.1
 			try {
 				int meshIndex = geo.indices.get(idx);
-				int boneIndex = geo.boneIndices.get(meshIndex * 4); //That's it!
+				int boneIndex = geo.boneIndices.get(meshIndex * 4); //:b:
 				//bIdx += 4;
 				
 				//Ok here's that part I was confused about.
 				int currentIndex = boneIndex;
 				int finalIndex = boneIndex;
-				String goalName = geo.boneList[boneIndex].replace(" ", "_").toLowerCase();
-				for (int jdx = 0; jdx < allBoneList.length; jdx++) {
-					String currentName = allBoneList[jdx].replace(" ", "_").toLowerCase();
+				String goalName = geo.boneList[boneIndex].replace(" ", "_");
+				for (int jdx = 0; jdx < compiledBones.length; jdx++) {
+					String currentName = compiledBones[jdx].name.replace(" ", "_");
 					if (currentName.equalsIgnoreCase(goalName)) {
 						finalIndex = jdx;
 						break;
@@ -437,7 +431,7 @@ public class DAEBuilder {
 				//this is the insanity I was confused about.
 				boneIndex -= (currentIndex - finalIndex);
 				
-				//So basically what I did was grab the indices
+				//So basically what I did was grab the indices and the ... other indices. Yes. Good. Cool.
 				vtxStr = vtxStr + boneIndex + " " + meshIndex + " ";
 				
 			} catch (IndexOutOfBoundsException e) {
@@ -637,10 +631,12 @@ public class DAEBuilder {
 		//base_scene.appendChild(mtlBindParent);
 		base_scene.appendChild(secondaryGeoNode);
 	}
-	/*
+	
+	
 	private String getMatrixAsString(Node bone) {
 		if (bone == null) return IDENTITY_MATRIX;
-		Transform3D mainTransformation = bone.transform;
+		Transform3D mainTransformation = bone.invRefTransform;
+		mainTransformation.invert();
 		Matrix4f matrix = new Matrix4f();
 		
 		int mainType = mainTransformation.getType();
@@ -654,44 +650,29 @@ public class DAEBuilder {
 		
 		return matrix.encodeToString().replace(", ", " ");
 	}
-	*/
-	private String getMatrixAsString(Node bone, boolean invert) {
-		if (!invert) return getMatrixAsString(bone);
-		if (bone == null) return IDENTITY_MATRIX;
-		Transform3D mainTransformation = bone.invRefTransform;
-		Matrix4f matrix = new Matrix4f();
-		
-		int mainType = mainTransformation.getType();
-		if (mainType == 0 || mainType == 1 || mainType == 2) {
-			//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
-			matrix = new Matrix4f().setToRotation(mainTransformation.extractRotation());
-		} else {
-			//affine, general
-			matrix = new Matrix4f().setToRotation(mainTransformation.getMatrix().extractRotation());
-		}
-		
-		return matrix.encodeToString().replace(", ", " ");
-	}
 	
+	/*
 	private String getMatrixAsString(Node bone) {
 		if (bone == null) return IDENTITY_MATRIX;
 		Transform3D mainTransformation = bone.invRefTransform;
 		Matrix4f matrix = new Matrix4f();
-		
 		int mainType = mainTransformation.getType();
+		
 		if (mainType == 0 || mainType == 1 || mainType == 2) {
+		
 			//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
 			Vector3f transform = mainTransformation.extractTranslation().mult(-1);
 			Quaternion rotation = mainTransformation.extractRotation().invert();
 			Vector3f v3Rot = rotation.toAngles();
 			
+			//This is what I did in the original code.
 			Quaternion newRotation = rotation.fromAnglesZXY(0f, (float) (v3Rot.x + Math.toRadians(90f)), 0f);
 			Vector3f newTransform = new Vector3f(transform.x, transform.z, -transform.y);
 			matrix = new Matrix4f().setToTransform(newTransform, newRotation);
 		}
-		
 		return matrix.encodeToString().replace(", ", " ");
 	}
+	*/
 	
 	public void appendNewMaterial(String name, int id) {
 		////////////////////////////
