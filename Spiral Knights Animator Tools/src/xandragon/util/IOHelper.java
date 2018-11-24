@@ -77,7 +77,11 @@ public class IOHelper {
 			return rootGameRsrcDirectory;
 		}
 		String uri = IOHelper.class.getProtectionDomain().getCodeSource().getLocation().getPath().replaceAll("%20", " ").substring(1);
+		int lastIdx = uri.lastIndexOf('/');
+		uri = uri.substring(0, lastIdx);
+		
 		File locationOrJar = new File(uri);
+		Logger.AppendLn(uri);
 		isDevelopmentEnvironment = locationOrJar.isDirectory() && locationOrJar.getName().matches("bin");
 		if (isDevelopmentEnvironment && forceFailInDev) {
 			Logger.AppendLn("[Dev] forceFailInDev = true, an error will occur!");
