@@ -287,7 +287,7 @@ public class DAEBuilder {
 	}
 	
 	public void appendNewBoneGeometry(Geometry geo, String name, int id) {
-		if (geo.boneList == null) {
+		if (geo.boneList == null || geo.boneIndices.size() == 0) {
 			return; //See BinaryParser
 		}
 		//Start off with the controller id for the bones.
@@ -361,7 +361,7 @@ public class DAEBuilder {
 		
 		Element weight_floatArray = DOCUMENT.createElement("float_array");
 		weight_floatArray.setAttribute("id", name + id + "-skin-weights-array");
-		weight_floatArray.setAttribute("count", String.valueOf(geo.boneWeights.size()));
+		weight_floatArray.setAttribute("count", String.valueOf(geo.indices.size()));
 		src_weights.appendChild(weight_floatArray);
 		
 		Text weight_array = DOCUMENT.createTextNode(weightsStr);
@@ -371,7 +371,7 @@ public class DAEBuilder {
 		Element weight_technique = DOCUMENT.createElement("technique_common");
 		Element weight_technique_accessor = DOCUMENT.createElement("accessor");
 		weight_technique_accessor.setAttribute("source", "#" + name + id + "-skin-weights-array");
-		weight_technique_accessor.setAttribute("count", String.valueOf(geo.boneWeights.size()));
+		weight_technique_accessor.setAttribute("count", String.valueOf(geo.indices.size()));
 		weight_technique_accessor.setAttribute("stride", "1");
 		Element weight_technique_param = DOCUMENT.createElement("param");
 		weight_technique_param.setAttribute("name", "WEIGHT");
@@ -389,8 +389,9 @@ public class DAEBuilder {
 		//https://clyp.it/zqombyub
 		
 		//jfc did I even have an idea for what good code writing is? That code makes me want to go back in time and slap myself.
-		//So basically what I did was go through the indices (which each have four values), grabbing only the first one since that one seems to be the only used one.
-		//After that, I had two values which I assume were "currentIndex" and "finalIndex" (they had bad names)...
+		//So basically what I did was go through the indices (which each have four values, they're stored in quads), 
+		//grabbing only the first one since that one seems to be the only used one. After that, I had two values which I
+		//assume were "currentIndex" and "finalIndex" (they had bad names)...
 		
 		//Following that I got a name variable for grabbing a bone name from the current bone index, then
 		//I iterated through some global variable I had named "compiled_bones" which was just all of the bones compiled into a list.
@@ -406,16 +407,24 @@ public class DAEBuilder {
 		//UPDATE: Upon looking at the construction of the code, the proposed "bone_indices" variable is actually the same length as the mesh indices.
 		//boneIndices -> indices
 		//int bIdx = 0;
+
 		
-		for (int idx = 0; idx < geo.indices.size(); idx++) {
+		
+		//ALRIGHT SCREW THIS IT DOESN'T EVEN FOLLOW THE SAME RULES.
+		//I HAVE NO IDEA HOW THIS WORKS, IT JUST DOES, PLEASE DON'T ASK HOW
+		for (int idx = 0; idx < Math.ceil(geo.boneIndices.size() / 4); idx++) {
+
 			//And I was LAZY about this one too. I suppose I'll just carry that over here because I'm insecure, and I need to get this out
 			//I'll make it pretty in V1.0.1
 			try {
 				int meshIndex = geo.indices.get(idx);
-				int boneIndex = geo.boneIndices.get(meshIndex * 4); //:b:
+				int boneIndex = geo.boneIndices.get(idx * 4);
+				//Note: The reason we do *4 is because each index is in quad groups
+				//In SK model converter I did a 2D array where each X index was a bone index set, and each Y index was oriented to one of the four in each set
+				//The code there did boneIndices[meshIndex][0], which is the same as *4 in this array where they are all in one 1D array.
 				//bIdx += 4;
 				
-				//Ok here's that part I was confused about.
+				//Ok here's that part I was confused about with the subtraction and all.
 				int currentIndex = boneIndex;
 				int finalIndex = boneIndex;
 				String goalName = geo.boneList[boneIndex].replace(" ", "_");
@@ -429,18 +438,18 @@ public class DAEBuilder {
 				
 				//Ok ok here it is right here
 				//this is the insanity I was confused about.
-				boneIndex -= (currentIndex - finalIndex);
+				boneIndex = finalIndex;
 				
 				//So basically what I did was grab the indices and the ... other indices. Yes. Good. Cool.
+				//Why.
 				vtxStr = vtxStr + boneIndex + " " + meshIndex + " ";
+				//vtxStr = vtxStr + meshIndex + " " + boneIndex + " ";
+				vcStr = vcStr + "1 ";
 				
 			} catch (IndexOutOfBoundsException e) {
 				System.out.println("Out of bounds " + idx);
 				//this_is_fine_fire_dog.png
 			}
-		}
-		for (int i = 0; i < geo.indices.size(); i++) {
-			vcStr = vcStr + "1 ";
 		}
 		
 		String vtxamount = String.valueOf(geo.indices.size()); //was c
@@ -530,15 +539,13 @@ public class DAEBuilder {
 	
 	//Called by above.
 	private void appendBoneReference(Geometry geo, String name, int id) {
-		Node bone = geo.thisBone;
-		
+		boolean usesBones = geo.isRigged;
 		Element mtlBindParent = null;
 		
 		//Append the base scene data.
  		Element topLevelGeoNode = DOCUMENT.createElement("node");
  		
-		if (bone == null) {
-			
+		if (usesBones) {
 	 		topLevelGeoNode.setAttribute("id", name + id);
 	 		topLevelGeoNode.setAttribute("name", name + id);
 	 		topLevelGeoNode.setAttribute("type", "NODE");
@@ -564,35 +571,10 @@ public class DAEBuilder {
 			//Material is done at the end (due to being common to both conditions)
 			
 			mtlBindParent = geoInstance;
-		} else {
-			//And we'll add extra if we have bones
-			
-			//Note: Matrices are interesting.
-			/*
-			 * R00 R01 R02 X
-			 * R10 R11 R12 Y
-			 * R20 R21 R22 Z
-			 * 0   0   0   1
-			 */
-			
-			//This is a new armature which is made for each model.
-			//Each geometry has its root node. We need to generate a node tree from it.
-			
-			//Note: This stuff goes under a new node tag for each model, aka put into base_scene. This references an armature, which I defined in the lines above.
-			/*Element mainNode = DOCUMENT.createElement("node");
-			mainNode.setAttribute("id", name + id);
-			mainNode.setAttribute("name", name + id);
-			mainNode.setAttribute("type", "NODE");
-			base_scene.appendChild(mainNode);
-			
-			Element transformationMatrix = DOCUMENT.createElement("matrix");
-			transformationMatrix.setAttribute("sid", "transform");
-			Text matrixValue = DOCUMENT.createTextNode("1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1");
-			transformationMatrix.appendChild(matrixValue);*/
-			
+		} else {		
 			//Append the bone tree.
 			//assembleBoneTree(topLevelGeoNode, bone);
-			
+			Node bone = geo.thisBone;
 			
 			//Reference a controller.
 			//controller.setAttribute("id", name + id + "-skin");
@@ -639,6 +621,8 @@ public class DAEBuilder {
 		mainTransformation.invert();
 		Matrix4f matrix = new Matrix4f();
 		
+		//TODO: Find out how to make bones point toward each other.
+		
 		int mainType = mainTransformation.getType();
 		if (mainType == 0 || mainType == 1 || mainType == 2) {
 			//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
@@ -650,29 +634,6 @@ public class DAEBuilder {
 		
 		return matrix.encodeToString().replace(", ", " ");
 	}
-	
-	/*
-	private String getMatrixAsString(Node bone) {
-		if (bone == null) return IDENTITY_MATRIX;
-		Transform3D mainTransformation = bone.invRefTransform;
-		Matrix4f matrix = new Matrix4f();
-		int mainType = mainTransformation.getType();
-		
-		if (mainType == 0 || mainType == 1 || mainType == 2) {
-		
-			//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
-			Vector3f transform = mainTransformation.extractTranslation().mult(-1);
-			Quaternion rotation = mainTransformation.extractRotation().invert();
-			Vector3f v3Rot = rotation.toAngles();
-			
-			//This is what I did in the original code.
-			Quaternion newRotation = rotation.fromAnglesZXY(0f, (float) (v3Rot.x + Math.toRadians(90f)), 0f);
-			Vector3f newTransform = new Vector3f(transform.x, transform.z, -transform.y);
-			matrix = new Matrix4f().setToTransform(newTransform, newRotation);
-		}
-		return matrix.encodeToString().replace(", ", " ");
-	}
-	*/
 	
 	public void appendNewMaterial(String name, int id) {
 		////////////////////////////
@@ -839,7 +800,7 @@ public class DAEBuilder {
 			
 			Element scene = DOCUMENT.createElement("scene");
 			Element visScene = DOCUMENT.createElement("instance_visual_scene");
-			visScene.setAttribute("url", "#scene");
+			visScene.setAttribute("url", "#Scene");
 			scene.appendChild(visScene);
 			ROOT.appendChild(scene);
 			

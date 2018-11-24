@@ -1,12 +1,15 @@
 package xandragon.converter;
 
+import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.zip.InflaterInputStream;
 
 import javax.swing.ImageIcon;
 import javax.swing.tree.DefaultMutableTreeNode;
 
+import com.threerings.export.BinaryExporter;
 import com.threerings.export.BinaryImporter;
 import com.threerings.opengl.model.config.*;
 import com.threerings.opengl.model.config.ArticulatedConfig.Node;
@@ -68,13 +71,13 @@ public class CommonConfig {
 	 * @param ren The tree renderer.
 	 * @throws IOException
 	 */
-	public CommonConfig(Object raw, String fileName, TreeRenderer ren) throws IOException {
+	public CommonConfig(Object raw, String rawString, String fileName, TreeRenderer ren) throws IOException {
 		treeRenderer = ren;
 		visibleMeshes = new AppendableArray<VisibleMesh>();
 		attachments = new AppendableArray<VisibleMesh>();
 		nodeTransforms = new AppendableArray<NodeTransform>();
 		name = fileName.replace("/", ".");
-		handleModelMain(raw, fileName);
+		handleModelMain(raw, rawString, fileName);
 	}
 	
 	
@@ -85,7 +88,7 @@ public class CommonConfig {
 		MainGui.INSTANCE.updateTree(treeRenderer.getDataTreePath());
 	}
 	
-	protected void handleModelMain(Object raw, String fileName, DefaultMutableTreeNode lastTreeNode, boolean isAttachment) throws IOException {
+	protected void handleModelMain(Object raw, String rawString, String fileName, DefaultMutableTreeNode lastTreeNode, boolean isAttachment) throws IOException {
 		if (raw instanceof ModelConfig) {
 			mainConfig = (ModelConfig) raw;
 		} else if (raw instanceof AnimationConfig) {
@@ -94,7 +97,7 @@ public class CommonConfig {
 			
 			return;
 		} else {
-			Logger.AppendLn("An error occurred! The input file's classtype is unknown. Try opening another file.\n(Input Type = " + raw.getClass().getSimpleName() + ")");
+			Logger.AppendLn("An error occurred! The input file's classtype is unknown. Try opening another file.\n(Input Type = " + raw.getClass().getSimpleName() + " -- This will probably be ModelConfig due to Java being unable to create the specific type, which won't be helpful in debugging.)");
 			exitTreeState("Type: ???", Icon.unknown);
 			
 			return;
@@ -105,7 +108,7 @@ public class CommonConfig {
 		//Said reflection relies on being in the SK directory, just like Spiral Spy yet again!
 		String name = null;
 		if (mainConfig.implementation == null) {
-			if (ProjectXModelConfigReplicator.isModelProjectX(raw)) {
+			if (rawString.toLowerCase().contains("projectxmodelconfig")) {
 				//Special case: Knight model!
 				modelClassName = "ProjectXModelConfig";
 				subClassName = null;
@@ -237,7 +240,8 @@ public class CommonConfig {
 		} else if (modelClassName.matches("CompoundConfig")) {
 			CompoundConfig cfg = (CompoundConfig) mainConfig.implementation;
 			
-			typeTreeNode.displayIcon = Icon.model2;
+			//typeTreeNode.displayIcon = Icon.model2;
+			typeTreeNode.displayIcon = Icon.partgroup;
 			TreeNode refTreeNode = new TreeNode("Referenced assets:", Icon.object);
 			
 			DefaultMutableTreeNode refTreeNodeTree;
@@ -411,8 +415,8 @@ public class CommonConfig {
 		MainGui.INSTANCE.updateTree(treeRenderer.getDataTreePath());
 	}
 	
-	protected void handleModelMain(Object raw, String fileName) throws IOException {
-		handleModelMain(raw, fileName, null, false);
+	protected void handleModelMain(Object raw, String rawString, String fileName) throws IOException {
+		handleModelMain(raw, rawString, fileName, null, false);
 	}
 	
 	protected void openReference(CompoundConfig cfg, DefaultMutableTreeNode parent, boolean isAttachment) throws IOException {
@@ -446,7 +450,23 @@ public class CommonConfig {
 		File ref = IOHelper.openModelReferenceTo(path);
 		FileInputStream fileIn = new FileInputStream(ref);
 		BinaryImporter stockImporter = new BinaryImporter(fileIn);
-		handleModelMain(stockImporter.readObject(), ref.getName(), parent, isAttachment);
+		
+		String rawString = "";
+		try {
+			DataInputStream rawData = new DataInputStream(new FileInputStream(ref));
+			rawData.readInt();
+			rawData.readShort();
+			short flags = rawData.readShort();
+	        boolean compressed = (flags & BinaryExporter.COMPRESSED_FORMAT_FLAG) != 0;
+	        if (compressed) {
+	        	rawData = new DataInputStream(new InflaterInputStream(rawData));
+	        }
+	        
+	        rawString = rawData.readUTF();
+	        rawData.close();
+		} catch (Exception e) { }
+		
+		handleModelMain(stockImporter.readObject(), rawString, ref.getName(), parent, isAttachment);
 		stockImporter.close();
 	}
 }

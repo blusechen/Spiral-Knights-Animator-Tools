@@ -4,6 +4,7 @@ import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import com.threerings.opengl.model.config.ArticulatedConfig.MeshNode;
 import com.threerings.opengl.model.config.ArticulatedConfig.Node;
 import com.threerings.opengl.renderer.config.ClientArrayConfig;
 
@@ -20,11 +21,13 @@ public class Geometry {
 	public ArrayList<Short> indices = new ArrayList<Short>();
 	public HashMap<String, Node> bonesByName = new HashMap<String, Node>();
 	public Model parentModel = null;
+	public boolean isRigged = false;
 	
 	//Create this for a MeshNode.
 	public Geometry(ClientArrayConfig _vertices, ClientArrayConfig _normals, ClientArrayConfig _uvs, ClientArrayConfig[] _vertexAttributes, ShortBuffer _indices, String[] bones, Node bone) {
 		this(_vertices, _normals, _uvs, _vertexAttributes, _indices, bones);
 		if (bone != null) {
+			isRigged = bone instanceof MeshNode;
 			thisBone = bone;
 			thisBone.name = thisBone.name.replace(" ", "_");
 		}

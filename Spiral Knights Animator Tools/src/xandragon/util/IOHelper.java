@@ -69,7 +69,7 @@ public class IOHelper {
 	
 	/**
 	 * This method will return the rsrc folder that should be in the Spiral Knights folder.
-	 * It will also set the {@value isDevelopmentEnvironment} state accordingly.
+	 * It will also set the {@link isDevelopmentEnvironment} state accordingly.
 	 * @return The rsrc directory, or null if the jar is in the wrong place.
 	 */
 	public static File getResourceDirectory() {

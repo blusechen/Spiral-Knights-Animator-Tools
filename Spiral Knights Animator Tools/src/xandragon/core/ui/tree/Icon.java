@@ -5,7 +5,6 @@ import java.net.URL;
 import javax.swing.ImageIcon;
 
 public class Icon {
-	
 	protected static ImageIcon loadImage(String name) {
 		URL url = Icon.class.getClassLoader().getResource("assets/"+name);
 		return new ImageIcon(url);
@@ -15,7 +14,6 @@ public class Icon {
 	public static ImageIcon object = loadImage("object.png");
 	public static ImageIcon sky = loadImage("sky.png");
 	public static ImageIcon model = loadImage("model.png");
-	public static ImageIcon model2 = loadImage("model2.png");
 	public static ImageIcon value = loadImage("value.png");
 	public static ImageIcon reference = loadImage("reference.png");
 	public static ImageIcon tag = loadImage("tag.png");
