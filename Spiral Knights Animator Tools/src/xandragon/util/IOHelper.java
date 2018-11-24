@@ -81,7 +81,6 @@ public class IOHelper {
 		uri = uri.substring(0, lastIdx);
 		
 		File locationOrJar = new File(uri);
-		Logger.AppendLn(uri);
 		isDevelopmentEnvironment = locationOrJar.isDirectory() && locationOrJar.getName().matches("bin");
 		if (isDevelopmentEnvironment && forceFailInDev) {
 			Logger.AppendLn("[Dev] forceFailInDev = true, an error will occur!");
