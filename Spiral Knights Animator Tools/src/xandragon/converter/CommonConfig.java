@@ -329,9 +329,14 @@ public class CommonConfig {
 				treeRenderer.addNode(newModelTreeNodeTree, typeTreeNode);
 			}
 			
-			MeshSet set = cfg.meshes.get(cfg.model);
-			visibleMeshes.add(set.visible);
-			
+			if (cfg.model != null) {
+				MeshSet set = cfg.meshes.get(cfg.model);
+				visibleMeshes.add(set.visible);
+			} else {
+				for (MeshSet set : cfg.meshes.values()) {
+					if (set.visible != null) visibleMeshes.add(set.visible);
+				}
+			}
 		} else if (modelClassName.matches("ProjectXModelConfig")) {
 			typeTreeNode.displayIcon = Icon.error;
 			typeTreeNode.displayText = "Type: ProjectXModelConfig";
