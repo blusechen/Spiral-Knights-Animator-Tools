@@ -58,7 +58,6 @@ public class MainGui extends Frame implements ActionListener, WindowListener {
 							file = IOHelper.setFileExtension(file, intendedExt); //Yes, keep this.
 							setSelectedFile(file);
 						} else if (renFile == JOptionPane.CANCEL_OPTION) {
-						//} else if (renFile == JOptionPane.NO_OPTION) {
 							return;
 						}
 					}
@@ -159,6 +158,8 @@ public class MainGui extends Frame implements ActionListener, WindowListener {
 	public void actionPerformed(ActionEvent evt) {
 		if (evt.getSource() == openButton) {
 			//Open requested.
+			chooser.setCurrentDirectory(IOHelper.getResourceDirectory()); // Requested QoL change.
+			
 			chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
 			fileMode = SelectType.OPEN;
 			chooser.addChoosableFileFilter(IOHelper.DAT);
