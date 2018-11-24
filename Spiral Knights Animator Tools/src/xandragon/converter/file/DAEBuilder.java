@@ -539,7 +539,7 @@ public class DAEBuilder {
 	
 	//Called by above.
 	private void appendBoneReference(Geometry geo, String name, int id) {
-		boolean usesBones = geo.isRigged;
+		boolean usesBones = geo.isRigged || (geo.thisBone == null);
 		Element mtlBindParent = null;
 		
 		//Append the base scene data.
