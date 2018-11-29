@@ -141,7 +141,7 @@ public class CommonConfig {
 		TreeNode typeTreeNode = new TreeNode("Type: "+modelClassName);
 		
 		if (modelClassName.matches("ModelConfig") && subClassName != null) {
-			typeTreeNode.displayText = "Type: "+modelClassName+"$"+subClassName;
+			typeTreeNode.displayText = "Type: "+modelClassName+"::"+subClassName;
 			
 			if (subClassName.matches("Imported")) {
 				Logger.AppendLn("The specific classtype in its raw form is:",typeTreeNode.displayText);

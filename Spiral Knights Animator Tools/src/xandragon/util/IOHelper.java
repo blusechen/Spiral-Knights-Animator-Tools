@@ -185,13 +185,14 @@ public class IOHelper {
 			String name = f.getName();
 			int lastIndex = name.lastIndexOf('.');
 			if (lastIndex != -1 && lastIndex > name.lastIndexOf('/') && lastIndex > name.lastIndexOf('\\')) {
-				if (extension.startsWith(".")) {
-					extension = extension.substring(1);
-				}
-				if (extensionNameGuidelines.matcher(extension).find()) return f;
-				name = name.substring(0, lastIndex) + "." + extension;
-				newFile = new File(f.getParent() + "/" + name);
+				name = name.substring(0, lastIndex);
 			}
+			if (extension.startsWith(".")) {
+				extension = extension.substring(1);
+			}
+			if (extensionNameGuidelines.matcher(extension).find()) return f;
+			name = name + "." + extension;
+			newFile = new File(f.getParent() + "/" + name);
 			return newFile;
 		}
 		return null;

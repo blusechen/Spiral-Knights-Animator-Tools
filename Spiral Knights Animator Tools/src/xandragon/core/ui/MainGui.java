@@ -48,6 +48,9 @@ public class MainGui extends Frame implements ActionListener, WindowListener {
 			@Override
 			public void approveSelection() {
 				File file = getSelectedFile();
+				if (file == null) {
+					return;
+				}
 				if (fileMode == SelectType.SAVE) {
 					String ext = IOHelper.getFileExtension(file);
 					//if (JOptionPane.showconfirmDialog(parent, body, title, JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {

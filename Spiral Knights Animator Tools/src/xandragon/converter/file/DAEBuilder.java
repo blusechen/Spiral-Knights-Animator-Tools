@@ -24,10 +24,7 @@ import com.threerings.math.Matrix4f;
 import com.threerings.math.Quaternion;
 import com.threerings.math.Transform3D;
 import com.threerings.math.Vector3f;
-import com.threerings.opengl.model.config.ArticulatedConfig.Attachment;
 import com.threerings.opengl.model.config.ArticulatedConfig.Node;
-import com.threerings.opengl.model.config.ArticulatedConfig.NodeTransform;
-import com.threerings.opengl.model.config.ModelConfig.VisibleMesh;
 
 import xandragon.converter.model.BoneDepth;
 import xandragon.converter.model.Geometry;
@@ -87,7 +84,7 @@ public class DAEBuilder {
 		Text author = DOCUMENT.createTextNode("Xan the Dragon");
 		Text tool = DOCUMENT.createTextNode("Spiral Knights Animator Tools");
 		Text version = DOCUMENT.createTextNode(Main.SK_ANIM_VER);
-		Text upAxisTxt = DOCUMENT.createTextNode("Y_UP");
+		Text upAxisTxt = DOCUMENT.createTextNode("Z_UP");
 		
 		authorElement.appendChild(author);
 		authoringTool.appendChild(tool);
@@ -442,8 +439,9 @@ public class DAEBuilder {
 				
 				//So basically what I did was grab the indices and the ... other indices. Yes. Good. Cool.
 				//Why.
+				//TO--DO: Enable this if something goes apeshit.
 				vtxStr = vtxStr + boneIndex + " " + meshIndex + " ";
-				//vtxStr = vtxStr + meshIndex + " " + boneIndex + " ";
+				//vtxStr = vtxStr + boneIndex + " ";
 				vcStr = vcStr + "1 ";
 				
 			} catch (IndexOutOfBoundsException e) {
@@ -477,11 +475,13 @@ public class DAEBuilder {
 		int boneMatrixCount = 0;
 		int boneRawCount = 0;
 		for (Node bone : compiledBones) {
+			//boneTransformationArrayText = boneTransformationArrayText + IDENTITY_MATRIX + " ";
 			boneTransformationArrayText = boneTransformationArrayText + getMatrixAsString(bone) + " ";
 			boneMatrixCount += 16;
 			boneRawCount++;
 		}
 		boneTransformationArrayText = boneTransformationArrayText.trim();
+		
 		
 		Element bindmtx_array = DOCUMENT.createElement("float_array");
 		bindmtx_array.setAttribute("count", String.valueOf(boneMatrixCount));
@@ -495,14 +495,17 @@ public class DAEBuilder {
 		bindmtx_accessor.setAttribute("source", "#" + name + id + "-skin-joints-bind-array");
 		bindmtx_accessor.setAttribute("stride", "16");
 		
+		
 		Element bindmtx_param = DOCUMENT.createElement("param");
 		bindmtx_param.setAttribute("name", "TRANSFORM");
 		bindmtx_param.setAttribute("type", "float4x4");
+		
 		
 		bindmtx_accessor.appendChild(bindmtx_param);
 		bindmtx_technique.appendChild(bindmtx_accessor);
 		src_bindmtx.appendChild(bindmtx_array);
 		src_bindmtx.appendChild(bindmtx_technique);
+		//TO--DO: Enable this if something goes apeshit
 		skin.appendChild(src_bindmtx);
 		
 		Element jointData = DOCUMENT.createElement("joints");
@@ -515,10 +518,10 @@ public class DAEBuilder {
 		Element inputTransform = DOCUMENT.createElement("input");
 		inputTransform.setAttribute("semantic", "INV_BIND_MATRIX");
 		inputTransform.setAttribute("source", "#" + name + id + "-skin-joints-bind");
+		//TO--DO: Enable this if something goes apeshit.
 		jointData.appendChild(inputTransform);
 		
 		skin.appendChild(jointData);
-		
 		
 		Element vcount = DOCUMENT.createElement("vcount");
 		Text vcountstr = DOCUMENT.createTextNode(vcStr);
@@ -539,13 +542,13 @@ public class DAEBuilder {
 	
 	//Called by above.
 	private void appendBoneReference(Geometry geo, String name, int id) {
-		boolean usesBones = geo.isRigged || (geo.thisBone == null);
+		boolean usesBones = !(geo.isRigged || (geo.thisBone == null));
 		Element mtlBindParent = null;
 		
 		//Append the base scene data.
  		Element topLevelGeoNode = DOCUMENT.createElement("node");
  		
-		if (usesBones) {
+		if (!usesBones) {
 	 		topLevelGeoNode.setAttribute("id", name + id);
 	 		topLevelGeoNode.setAttribute("name", name + id);
 	 		topLevelGeoNode.setAttribute("type", "NODE");
@@ -553,7 +556,8 @@ public class DAEBuilder {
 			//Just make a default matrix for the root transform.
 			Element trsMatrix = DOCUMENT.createElement("matrix");
 			trsMatrix.setAttribute("sid", "transform");
-			Text mtxVal = DOCUMENT.createTextNode("1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1");
+			Text mtxVal = DOCUMENT.createTextNode(IDENTITY_MATRIX);
+			//Text mtxVal = DOCUMENT.createTextNode(getMatrixAsString(geo.bonesByName.get(name)));
 			trsMatrix.appendChild(mtxVal);
 			topLevelGeoNode.appendChild(trsMatrix);
 			
@@ -614,23 +618,60 @@ public class DAEBuilder {
 		base_scene.appendChild(secondaryGeoNode);
 	}
 	
+	private Matrix4f extractMatrixFromTransform(Transform3D in) {
+		Matrix4f matrix = new Matrix4f();
+		
+		if (in != null) {
+			int mainType = in.getType();
+			if (mainType == 0 || mainType == 1 || mainType == 2) {
+				//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
+				matrix = new Matrix4f().setToTransform(in.extractTranslation(), in.extractRotation());
+			} else {
+				//affine, general
+				matrix = in.getMatrix();
+			}
+		}
+		
+		return matrix;
+	}
+	
+	public Quaternion swapRotation(Quaternion in) {
+		Vector3f angles = in.toAngles();
+		return in.fromAnglesZXY(angles.y, angles.x, angles.z);
+	}
+	
+	private String getTranslation(Node bone) {
+		Transform3D in = bone.invRefTransform;
+		if (in != null) {
+			int mainType = in.getType();
+			if (mainType == 0 || mainType == 1 || mainType == 2) {
+				//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
+				Vector3f vec = in.extractTranslation();
+				return vec.encodeToString().replace(", ", " ");
+			}
+		}
+		return "0 0 0";
+	}
+	
+	private String getRotation(Node bone) {
+		Transform3D in = bone.invRefTransform;
+		if (in != null) {
+			int mainType = in.getType();
+			if (mainType == 0 || mainType == 1 || mainType == 2) {
+				//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
+				Quaternion rot = in.extractRotation();
+				return rot.encodeToString().replace(", ", " ");
+			}
+		}
+		return "0 0 0 1";
+	}
 	
 	private String getMatrixAsString(Node bone) {
 		if (bone == null) return IDENTITY_MATRIX;
-		Transform3D mainTransformation = bone.invRefTransform;
-		mainTransformation.invert();
-		Matrix4f matrix = new Matrix4f();
+		Transform3D invTransformation = bone.invRefTransform;
+		//Transform3D transformation = bone.transform;
 		
-		//TODO: Find out how to make bones point toward each other.
-		
-		int mainType = mainTransformation.getType();
-		if (mainType == 0 || mainType == 1 || mainType == 2) {
-			//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
-			matrix = new Matrix4f().setToTransform(mainTransformation.extractTranslation(), mainTransformation.extractRotation());
-		} else {
-			//affine, general
-			matrix = mainTransformation.getMatrix();
-		}
+		Matrix4f matrix = extractMatrixFromTransform(invTransformation);
 		
 		return matrix.encodeToString().replace(", ", " ");
 	}
@@ -743,31 +784,20 @@ public class DAEBuilder {
 		
 		Element matrixNode = DOCUMENT.createElement("matrix");
 		matrixNode.setAttribute("sid", "transform");
-		//For the transformation, the method outputs each value separated by ", ". Keep that in mind.
-		
-		//95% sure I need to invert this matrix, it says "inv" at the start which means it's inverted, so I need it normal. .invert();
-		
-		/*
-		Transform3D mainTransformation = node.transform;
-		Matrix4f matrix = new Matrix4f();
-		
-		int mainType = mainTransformation.getType();
-		if (mainType == 0 || mainType == 1 || mainType == 2) {
-			//Identity, Rigid (vec3/quat), Uniform (vec3/quat/scale)
-			matrix = new Matrix4f().setToTransform(mainTransformation.extractTranslation(), mainTransformation.extractRotation());
-		} else {
-			//affine, general
-			matrix = mainTransformation.getMatrix();
-		}
-		
-		String transformation = matrix.encodeToString().replace(", ", " ");
-		*/
-		//String transformation = getMatrixAsString(node, true);
 		Text matrixText = DOCUMENT.createTextNode(IDENTITY_MATRIX); //was transformation
-		
 		matrixNode.appendChild(matrixText);
 		mdlNode.appendChild(matrixNode);
 		
+		/*
+		Element posNode = DOCUMENT.createElement("translate");
+		Element rotNode = DOCUMENT.createElement("rotate");
+		Text posText = DOCUMENT.createTextNode(getTranslation(node));
+		Text rotText = DOCUMENT.createTextNode(getRotation(node));
+		posNode.appendChild(posText);
+		rotNode.appendChild(rotText);
+		mdlNode.appendChild(posNode);
+		mdlNode.appendChild(rotNode);
+		*/
 		if (parentElement != null) parentElement.appendChild(mdlNode);
 		
 		//Now, go through this node's sub-objects.
