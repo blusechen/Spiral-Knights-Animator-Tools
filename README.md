@@ -20,7 +20,3 @@ Sorry guys, Deadline Machine 🅱roke, and school starts tomorrow for me. (Upd. 
  * Guaranteed support for any **model** file (Things like scripts will not convert since they aren't 3D models.)
 * **Commnand line support**
 * The GUI still works, and has been redone to be much smaller and straightforward.
-
-# Where can I view development progress? 
-
-You can refer to [CURRENT_ISSUES.MD](https://github.com/XanTheDragon/Spiral-Knights-Animator-Tools/blob/master/CURRENT_ISSUES.md) for the list of issues that are currently hindering development right now.
