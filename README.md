@@ -1,17 +1,9 @@
 # About the project
 This is a revamp of the old, crappy tool dubbed [Spiral Knights Model Converter](https://github.com/XanTheDragon/Spiral-Knights-Model-Converter).
 
-# When can I try it?
-There may be a release up in the releases tab. At times I'll remove them.
+# What makes this version better, and what does it do? 
 
-# When is it truly out and ready for full usage?
-~~My rough guess is August 13 at a maximum (Two weeks from now, July 30). I'm actively working.~~
-
-Sorry guys, Deadline Machine 🅱roke, and school starts tomorrow for me. (Upd. August 13)
-
-**Update:** I'm going to try to get back into this. I know it's rather late after the deadline and I've gone silent again. For details, I'm doing a complete rewrite of the reader to make it more modular and behave much better.
-
-# What makes this version better?
+This program is simple: It grabs geometry data from Spiral Knights models and exports it into the DAE format.
 
 * 100% handwritten code - No more using other libraries.
  * Considerably smaller jar size
