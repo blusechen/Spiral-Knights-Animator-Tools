@@ -5,7 +5,7 @@ This is a revamp of the old, crappy tool dubbed [Spiral Knights Model Converter]
 
 This program is simple: It grabs geometry data from Spiral Knights models and exports it into the DAE format.
 
-* 100% handwritten code - No more using other libraries.
+* 100% handwritten code - No more using other libraries (as in copy/paste of source code. I'm now using JARs)
  * Considerably smaller jar size
 * Direct binary file reading
  * Considerably faster conversion
