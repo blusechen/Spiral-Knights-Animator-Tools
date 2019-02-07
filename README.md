@@ -9,6 +9,6 @@ This program is simple: It grabs geometry data from Spiral Knights models and ex
  * Considerably smaller jar size
 * Direct binary file reading
  * Considerably faster conversion
- * Guaranteed support for any **model** file (Things like scripts will not convert since they aren't 3D models.)
+ * (Ideally) Guaranteed support for any **model** file (Things like scripts will not convert since they aren't 3D models.)
 * **Command line support** (Coming Soon)
 * The GUI still works, and has been redone to be much smaller and straightforward.
